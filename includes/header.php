@@ -1,12 +1,12 @@
 <?php
 sesion();
-if(!isset($titulo)) $titulo='DentalSys';
+if(!isset($titulo)) $titulo='DentalSys-Magus';
 if(!isset($pagina_activa)) $pagina_activa='';
 ?><!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title><?= e($titulo) ?> — DentalSys</title>
+<title>DentalSys | Magus</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -125,8 +125,21 @@ hr{border-color:var(--bd2)!important}
 .alert-bar-r{background:rgba(224,82,82,.1);border:1px solid rgba(224,82,82,.25);border-left:4px solid var(--r)}
 .alert-bar-a{background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.25);border-left:4px solid var(--a)}
 /* ══ RESPONSIVE / MOBILE ══════════════════════════════════════ */
-.sb-toggle{display:none;background:none;border:none;font-size:22px;color:var(--c);padding:4px 8px;line-height:1}
+.sb-toggle{background:none;border:none;font-size:22px;color:var(--c);padding:4px 8px;line-height:1;cursor:pointer;transition:all .2s}
+.sb-toggle:hover{color:var(--c2);transform:scale(1.1)}
 .sb-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999;backdrop-filter:blur(2px)}
+
+/* Sidebar colapsado en desktop */
+.sb.collapsed{width:70px;overflow:visible}
+.sb.collapsed .sb-name,.sb.collapsed .sb-sec,.sb.collapsed .nb,.sb.collapsed .sb-foot>div:first-child>div:last-child,.sb.collapsed .btn-out{display:none}
+.sb.collapsed .sb-brand{justify-content:center;padding:16px 8px}
+.sb.collapsed .sb-nav a{justify-content:center;padding:10px;font-size:0;position:relative}
+.sb.collapsed .sb-nav a i{margin:0;font-size:15px}
+.sb.collapsed .sb-nav a::after{content:attr(data-title);position:absolute;left:100%;top:50%;transform:translateY(-50%);background:var(--bg2);color:var(--t);padding:6px 12px;border-radius:6px;font-size:11px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s;margin-left:8px;border:1px solid var(--bd);box-shadow:0 4px 12px rgba(0,0,0,.3);z-index:1000}
+.sb.collapsed .sb-nav a:hover::after{opacity:1}
+.sb.collapsed .sb-foot{padding:12px 8px;text-align:center}
+.sb.collapsed .sb-foot .ava{margin:0 auto}
+.mw.expanded{margin-left:70px}
 
 /* TABLET (≤992px) */
 @media(max-width:992px){
@@ -142,10 +155,12 @@ hr{border-color:var(--bd2)!important}
   /* Sidebar slide-in */
   .sb{transform:translateX(-100%);box-shadow:4px 0 24px rgba(0,0,0,.5)}
   .sb.open{transform:translateX(0)}
+  .sb.collapsed{width:260px;transform:translateX(-100%)}
+  .sb.collapsed.open{transform:translateX(0)}
   .sb-ov.open{display:block}
-  .sb-toggle{display:block}
   /* Main layout */
   .mw{margin-left:0}
+  .mw.expanded{margin-left:0}
   .tb{padding:0 12px;height:52px}
   .pb{padding:12px}
   /* Tables: horizontal scroll */
@@ -265,45 +280,54 @@ a:not([class]){color:var(--c)}
 <nav class="sb" id="sb">
  <div class="sb-brand">
   <div class="sb-logo">🦷</div>
-  <div class="sb-name">DentalSys<small>Clínica Odontológica</small></div>
+  <div class="sb-name">DentalSys-Magus<small>Clínica Odontológica</small></div>
  </div>
  <div class="sb-nav">
   <?php $r=getRol(); $p=$pagina_activa; ?>
+  <?php if(puedeVer('dashboard')): ?>
   <div class="sb-sec">Principal</div>
   <a href="<?=BASE_URL?>/index.php" class="<?=$p==='dash'?'act':''?>"><i class="bi bi-grid-fill"></i>Dashboard</a>
-
-  <div class="sb-sec">Atención</div>
-  <a href="<?=BASE_URL?>/pages/pacientes.php" class="<?=$p==='pac'?'act':''?>"><i class="bi bi-people-fill"></i>Pacientes</a>
-  <a href="<?=BASE_URL?>/pages/citas.php" class="<?=$p==='citas'?'act':''?>"><i class="bi bi-calendar2-week-fill"></i>Agenda / Citas</a>
-  <a href="<?=BASE_URL?>/pages/historia_clinica.php" class="<?=$p==='hc'?'act':''?>"><i class="bi bi-file-medical-fill"></i>Historia Clínica</a>
-  <a href="<?=BASE_URL?>/pages/odontograma.php" class="<?=$p==='odont'?'act':''?>"><i class="bi bi-grid-3x3-gap-fill"></i>Odontograma</a>
-
-  <div class="sb-sec">Clínica</div>
-  <a href="<?=BASE_URL?>/pages/tratamientos.php" class="<?=$p==='trat'?'act':''?>"><i class="bi bi-clipboard2-pulse-fill"></i>Tratamientos</a>
-  <?php if(esRol('admin','contador','recepcion')): ?>
-  <a href="<?=BASE_URL?>/pages/facturacion.php" class="<?=$p==='fact'?'act':''?>"><i class="bi bi-cash-coin"></i>Facturación</a>
   <?php endif; ?>
+
+  <?php if(puedeVer('pacientes')||puedeVer('citas')||puedeVer('historia_clinica')||puedeVer('odontograma')): ?>
+  <div class="sb-sec">Atención</div>
+  <?php if(puedeVer('pacientes')): ?><a href="<?=BASE_URL?>/pages/pacientes.php" class="<?=$p==='pac'?'act':''?>"><i class="bi bi-people-fill"></i>Pacientes</a><?php endif; ?>
+  <?php if(puedeVer('citas')): ?><a href="<?=BASE_URL?>/pages/citas.php" class="<?=$p==='citas'?'act':''?>"><i class="bi bi-calendar2-week-fill"></i>Agenda / Citas</a><?php endif; ?>
+  <?php if(puedeVer('historia_clinica')): ?><a href="<?=BASE_URL?>/pages/historia_clinica.php" class="<?=$p==='hc'?'act':''?>"><i class="bi bi-file-medical-fill"></i>Historia Clínica</a><?php endif; ?>
+  <?php if(puedeVer('odontograma')): ?><a href="<?=BASE_URL?>/pages/odontograma.php" class="<?=$p==='odont'?'act':''?>"><i class="bi bi-grid-3x3-gap-fill"></i>Odontograma</a><?php endif; ?>
+  <?php endif; ?>
+
+  <?php if(puedeVer('tratamientos')||puedeVer('facturacion')||puedeVer('inventario')||puedeVer('notificaciones')||puedeVer('turnos')): ?>
+  <div class="sb-sec">Clínica</div>
+  <?php if(puedeVer('tratamientos')): ?><a href="<?=BASE_URL?>/pages/tratamientos.php" class="<?=$p==='trat'?'act':''?>"><i class="bi bi-clipboard2-pulse-fill"></i>Tratamientos</a><?php endif; ?>
+  <?php if(puedeVer('facturacion')): ?><a href="<?=BASE_URL?>/pages/facturacion.php" class="<?=$p==='fact'?'act':''?>"><i class="bi bi-cash-coin"></i>Facturación</a><?php endif; ?>
+  <?php if(puedeVer('inventario')): ?>
   <a href="<?=BASE_URL?>/pages/inventario.php" class="<?=$p==='inv'?'act':''?>">
    <i class="bi bi-box-seam-fill"></i>Inventario
    <?php try{$si=db()->query("SELECT COUNT(*) FROM inventario WHERE stock_actual<=stock_minimo AND activo=1")->fetchColumn();if($si>0) echo "<span class='nb'>$si</span>";}catch(Exception $e){} ?>
   </a>
-  <a href="<?=BASE_URL?>/pages/notificaciones.php" class="<?=$p==='notif'?'act':''?>"><i class="bi bi-whatsapp"></i>WhatsApp / Notif.</a>
-  <a href="<?=BASE_URL?>/pages/turnos.php" class="<?=$p==='turnos'?'act':''?>"><i class="bi bi-display"></i>Pantalla Turnos</a>
+  <?php endif; ?>
+  <?php if(puedeVer('notificaciones')): ?><a href="<?=BASE_URL?>/pages/notificaciones.php" class="<?=$p==='notif'?'act':''?>"><i class="bi bi-whatsapp"></i>WhatsApp / Notif.</a><?php endif; ?>
+  <?php if(puedeVer('turnos')): ?><a href="<?=BASE_URL?>/pages/turnos.php" class="<?=$p==='turnos'?'act':''?>"><i class="bi bi-display"></i>Pantalla Turnos</a><?php endif; ?>
+  <?php endif; ?>
 
+  <?php if(puedeVer('reportes')): ?>
   <div class="sb-sec">Reportes</div>
   <a href="<?=BASE_URL?>/pages/reportes.php" class="<?=$p==='rep'?'act':''?>"><i class="bi bi-bar-chart-fill"></i>Reportes</a>
+  <?php endif; ?>
 
   <?php if(esRol('admin')): ?>
   <div class="sb-sec">Sistema</div>
   <a href="<?=BASE_URL?>/pages/admin/empresa.php" class="<?=$p==='empresa'?'act':''?>"><i class="bi bi-building-fill"></i>Empresa</a>
   <a href="<?=BASE_URL?>/pages/admin/documentos.php" class="<?=$p==='docs'?'act':''?>"><i class="bi bi-list-ol"></i>Series y Correlativos</a>
   <a href="<?=BASE_URL?>/pages/admin/usuarios.php" class="<?=$p==='usr'?'act':''?>"><i class="bi bi-person-badge-fill"></i>Usuarios / Roles</a>
+  <a href="<?=BASE_URL?>/pages/admin/roles.php" class="<?=$p==='roles'?'act':''?>"><i class="bi bi-shield-lock-fill"></i>Permisos por Rol</a>
   <a href="<?=BASE_URL?>/pages/admin/configuracion.php" class="<?=$p==='cfg'?'act':''?>"><i class="bi bi-gear-fill"></i>Configuración</a>
   <a href="<?=BASE_URL?>/pages/admin/auditoria.php" class="<?=$p==='audit'?'act':''?>"><i class="bi bi-shield-check-fill"></i>Auditoría SIHCE</a>
   <?php endif; ?>
  </div>
  <div class="sb-foot">
-  <?php $u=getUsr(); ?>
+  <?php $su=getUsr(); ?>
   <div class="d-flex align-items-center gap-2 mb-1">
    <div class="ava" style="width:30px;height:30px;font-size:11px"><?=strtoupper(substr($u['nombre']??'A',0,1))?></div>
    <div><div class="sb-uname"><?=e($u['nombre']??'')?></div><div class="sb-urole"><?=e(getRol())?></div></div>
@@ -314,7 +338,7 @@ a:not([class]){color:var(--c)}
 <div class="mw">
  <div class="tb">
   <div class="d-flex align-items-center gap-2">
-   <button class="sb-toggle" onclick="sbT()"><i class="bi bi-list"></i></button>
+   <button class="sb-toggle" id="sbToggleBtn"><i class="bi bi-list"></i></button>
    <span class="tb-title"><?=e($titulo??'')?></span>
   </div>
   <div class="d-flex gap-2 align-items-center">

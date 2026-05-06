@@ -41,6 +41,42 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   $hci=db()->query("SELECT hc_id FROM planes_tratamiento WHERE id=$pid")->fetchColumn();
   go("pages/historia_clinica.php?id=$hci#tpl");
  }
+ if($ap==='eliminar_trat'){
+  $tid=(int)$_POST['id'];
+  // Soft delete: marca como inactivo (preserva integridad referencial con planes existentes)
+  db()->prepare("UPDATE tratamientos_catalogo SET activo=0 WHERE id=?")->execute([$tid]);
+  auditar('ELIMINAR_TRATAMIENTO','tratamientos_catalogo',$tid);
+  flash('ok','Tratamiento eliminado del catálogo.');
+  go('pages/tratamientos.php');
+ }
+ // ── Categorías ──────────────────────────────────────────────────
+ if($ap==='guardar_cat'){
+  $cid=(int)($_POST['cat_id']??0);
+  $nom=trim($_POST['cat_nombre']??'');
+  $col=trim($_POST['cat_color']??'#00D4EE');
+  if(!$nom){ flash('error','Nombre de categoría requerido.'); go('pages/tratamientos.php?accion=categorias'); }
+  if($cid){
+   db()->prepare("UPDATE categorias_tratamiento SET nombre=?,color=? WHERE id=?")->execute([$nom,$col,$cid]);
+   auditar('EDITAR_CATEGORIA','categorias_tratamiento',$cid);
+   flash('ok','Categoría actualizada.');
+  } else {
+   db()->prepare("INSERT INTO categorias_tratamiento(nombre,color)VALUES(?,?)")->execute([$nom,$col]);
+   $nid=db()->lastInsertId();
+   auditar('CREAR_CATEGORIA','categorias_tratamiento',$nid);
+   flash('ok','Categoría creada.');
+  }
+  go('pages/tratamientos.php?accion=categorias');
+ }
+ if($ap==='eliminar_cat'){
+  $cid=(int)($_POST['cat_id']??0);
+  $cnt=db()->prepare("SELECT COUNT(*) FROM tratamientos_catalogo WHERE categoria_id=? AND activo=1");
+  $cnt->execute([$cid]); $cnt=$cnt->fetchColumn();
+  if($cnt>0){ flash('error',"No se puede eliminar: tiene $cnt tratamiento(s) asociado(s)."); go('pages/tratamientos.php?accion=categorias'); }
+  db()->prepare("DELETE FROM categorias_tratamiento WHERE id=?")->execute([$cid]);
+  auditar('ELIMINAR_CATEGORIA','categorias_tratamiento',$cid);
+  flash('ok','Categoría eliminada.');
+  go('pages/tratamientos.php?accion=categorias');
+ }
 }
 
 if($accion==='catalogo'){
@@ -51,7 +87,7 @@ if($accion==='catalogo'){
  if($cat_sel){$w.=' AND t.categoria_id=?';$pm[]=$cat_sel;}
  $trats=db()->prepare("SELECT t.*,c.nombre AS cat_nm,c.color AS cat_col FROM tratamientos_catalogo t LEFT JOIN categorias_tratamiento c ON t.categoria_id=c.id $w ORDER BY c.nombre,t.nombre");
  $trats->execute($pm); $trats=$trats->fetchAll();
- $topbar_act='<a href="?accion=nuevo_trat" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Nuevo tratamiento</a>';
+ $topbar_act='<a href="?accion=nuevo_trat" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Nuevo tratamiento</a> <a href="?accion=categorias" class="btn btn-dk btn-sm ms-1"><i class="bi bi-tags me-1"></i>Gestionar categorías</a>';
  require_once __DIR__.'/../includes/header.php';
 ?>
 <div class="d-flex gap-2 flex-wrap mb-4">
@@ -70,7 +106,16 @@ if($accion==='catalogo'){
   <td><span class="badge" style="background:<?=$t['cat_col']??'#607080'?>22;color:<?=$t['cat_col']??'#A0B0C0'?>;border:1px solid <?=$t['cat_col']??'#607080'?>44"><?=e($t['cat_nm']??'—')?></span></td>
   <td class="mon fw-bold"><?=mon((float)$t['precio_base'])?></td>
   <td><small><?=$t['duracion_min']?> min</small></td>
-  <td><a href="?accion=editar_trat&id=<?=$t['id']?>" class="btn btn-dk btn-ico"><i class="bi bi-pencil"></i></a></td>
+  <td>
+   <div class="d-flex gap-1">
+    <a href="?accion=editar_trat&id=<?=$t['id']?>" class="btn btn-dk btn-ico" title="Editar"><i class="bi bi-pencil"></i></a>
+    <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar el tratamiento &quot;<?=e($t['nombre'])?>&quot; del catálogo?\n\nQuedará oculto pero los planes que lo usan seguirán funcionando.')">
+     <input type="hidden" name="accion" value="eliminar_trat">
+     <input type="hidden" name="id" value="<?=$t['id']?>">
+     <button type="submit" class="btn btn-del btn-ico" title="Eliminar"><i class="bi bi-trash"></i></button>
+    </form>
+   </div>
+  </td>
  </tr>
  <?php endforeach; ?>
  </tbody>
@@ -105,6 +150,123 @@ if($accion==='catalogo'){
  </div>
 </form></div></div>
 <?php require_once __DIR__.'/../includes/footer.php';
+
+}elseif($accion==='categorias'){
+ $titulo='Categorías de Tratamiento'; $pagina_activa='trat';
+ $cats=db()->query("SELECT c.*,(SELECT COUNT(*) FROM tratamientos_catalogo WHERE categoria_id=c.id AND activo=1) AS total FROM categorias_tratamiento c ORDER BY c.nombre")->fetchAll();
+ $catEdit=null;
+ $editId=(int)($_GET['editar']??0);
+ if($editId){ foreach($cats as $c){ if($c['id']===$editId){$catEdit=$c;break;} } }
+ $topbar_act='<a href="?accion=catalogo" class="btn btn-dk btn-sm"><i class="bi bi-arrow-left me-1"></i>Catálogo</a>';
+ require_once __DIR__.'/../includes/header.php';
+?>
+<style>
+.cat-grid  { display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:20px; }
+.cat-card  { background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;padding:14px 16px;
+              display:flex;align-items:center;gap:12px;transition:border-color .15s; }
+.cat-card:hover{ border-color:rgba(255,255,255,.15); }
+.cat-swatch{ width:38px;height:38px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;
+              justify-content:center;font-size:16px; }
+.cat-info  { flex:1;min-width:0; }
+.cat-name  { font-size:13px;font-weight:700;color:var(--t); }
+.cat-count { font-size:11px;color:var(--t2); }
+.cat-actions{ display:flex;gap:4px;flex-shrink:0; }
+.form-card { background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;padding:20px;margin-bottom:16px; }
+.form-card h3{ font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t);margin-bottom:14px; }
+.color-presets{ display:flex;flex-wrap:wrap;gap:6px;margin-top:6px; }
+.color-preset { width:24px;height:24px;border-radius:5px;cursor:pointer;border:2px solid transparent;
+                 transition:all .12s;flex-shrink:0; }
+.color-preset:hover,.color-preset.sel{ border-color:#fff;transform:scale(1.15); }
+@media(max-width:600px){ .cat-grid{ grid-template-columns:1fr; } }
+</style>
+
+<div class="pb">
+  <?=popFlash()?>
+  <div class="row g-4">
+
+    <!-- ── Lista de categorías ──────────────────────────── -->
+    <div class="col-12 col-lg-8">
+      <div class="cat-grid">
+        <?php foreach($cats as $c): ?>
+        <div class="cat-card">
+          <div class="cat-swatch" style="background:<?=$c['color']?>22;border:1px solid <?=$c['color']?>44">
+            <span style="color:<?=$c['color']?>;font-weight:800;font-size:13px"><?=strtoupper(substr($c['nombre'],0,2))?></span>
+          </div>
+          <div class="cat-info">
+            <div class="cat-name"><?=e($c['nombre'])?></div>
+            <div class="cat-count"><?=$c['total']?> tratamiento(s) activo(s)</div>
+          </div>
+          <div class="cat-actions">
+            <a href="?accion=categorias&editar=<?=$c['id']?>" class="btn btn-dk btn-ico btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
+            <?php if($c['total']==0): ?>
+            <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar la categoría <?=e(addslashes($c['nombre']))?> ?')">
+              <input type="hidden" name="accion"  value="eliminar_cat">
+              <input type="hidden" name="cat_id"  value="<?=$c['id']?>">
+              <button type="submit" class="btn btn-del btn-ico btn-sm" title="Eliminar"><i class="bi bi-trash"></i></button>
+            </form>
+            <?php else: ?>
+            <button class="btn btn-dk btn-ico btn-sm" disabled title="Tiene tratamientos — no se puede eliminar"><i class="bi bi-trash" style="opacity:.35"></i></button>
+            <?php endif;?>
+          </div>
+        </div>
+        <?php endforeach;?>
+        <?php if(!$cats): ?>
+        <div style="color:var(--t2);font-size:13px;padding:20px">No hay categorías aún.</div>
+        <?php endif;?>
+      </div>
+    </div>
+
+    <!-- ── Formulario agregar / editar ─────────────────── -->
+    <div class="col-12 col-lg-4">
+      <div class="form-card">
+        <h3><?=$catEdit?'✏️ Editar categoría':'➕ Nueva categoría'?></h3>
+        <form method="POST">
+          <input type="hidden" name="accion"  value="guardar_cat">
+          <input type="hidden" name="cat_id"  value="<?=$catEdit?$catEdit['id']:0?>">
+          <div class="mb-3">
+            <label class="form-label">Nombre *</label>
+            <input type="text" name="cat_nombre" class="form-control" required
+                   value="<?=e($catEdit?$catEdit['nombre']:'')?>"
+                   placeholder="ej. Implantología">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Color</label>
+            <div class="d-flex align-items-center gap-2">
+              <input type="color" name="cat_color" id="catColor" class="form-control form-control-color"
+                     value="<?=$catEdit?$catEdit['color']:'#00D4EE'?>"
+                     style="width:48px;height:38px;padding:2px;cursor:pointer">
+              <span id="catColorHex" style="font-size:12px;color:var(--t2);font-family:monospace"><?=$catEdit?$catEdit['color']:'#00D4EE'?></span>
+            </div>
+            <div class="color-presets mt-2">
+              <?php foreach(['#00D4EE','#2ECC8E','#E05252','#F5A623','#8B5CF6','#EC4899','#6366F1','#F59E0B','#06B6D4','#10B981','#EF4444','#3B82F6','#A78BFA','#FB923C','#34D399','#F472B6'] as $pc): ?>
+              <div class="color-preset <?=$catEdit&&$catEdit['color']===$pc?'sel':''?>"
+                   style="background:<?=$pc?>"
+                   onclick="document.getElementById('catColor').value='<?=$pc?>';document.getElementById('catColorHex').textContent='<?=$pc?>';document.querySelectorAll('.color-preset').forEach(x=>x.classList.remove('sel'));this.classList.add('sel')">
+              </div>
+              <?php endforeach;?>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary flex-grow-1">
+              <i class="bi bi-floppy me-1"></i><?=$catEdit?'Actualizar':'Crear categoría'?>
+            </button>
+            <?php if($catEdit): ?>
+            <a href="?accion=categorias" class="btn btn-dk">Cancelar</a>
+            <?php endif;?>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('catColor').addEventListener('input',function(){
+  document.getElementById('catColorHex').textContent = this.value;
+  document.querySelectorAll('.color-preset').forEach(x=>x.classList.remove('sel'));
+});
+</script>
+<?php
+ require_once __DIR__.'/../includes/footer.php';
 
 }elseif($accion==='plan'){
  if(!$hc_id||!$pac_id){flash('error','Parámetros inválidos');go('pages/tratamientos.php');}

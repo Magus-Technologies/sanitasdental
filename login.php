@@ -19,7 +19,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 }
 ?><!DOCTYPE html><html lang="es"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Acceso — DentalSys</title>
+<title>Acceso-DentalSys | Magus</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
@@ -44,7 +44,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 </style></head><body>
 <canvas class="canvas" id="cv"></canvas>
 <div class="box">
- <div class="logo-w"><div class="logo-c">🦷</div><div class="brand">DentalSys</div><div class="sub">Sistema de Gestión Clínica</div></div>
+ <div class="logo-w"><div class="logo-c">🦷</div><div class="brand">DentalSys | Magus</div><div class="sub">Sistema de Gestión Clínica</div></div>
  <?php if($err): ?><div class="err"><i class="bi bi-exclamation-triangle-fill"></i><?=e($err)?></div><?php endif; ?>
  <form method="POST">
   <label class="lbl">Correo electrónico</label>
@@ -53,8 +53,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   <div class="fw"><input type="password" name="password" class="fi" placeholder="••••••••" required><i class="bi bi-lock"></i></div>
   <button type="submit" class="btn-in"><i class="bi bi-box-arrow-in-right me-2"></i>Ingresar al sistema</button>
  </form>
- <div class="hint">DentalSys © <?=date('Y')?> — Compatible SIHCE-MINSA</div>
-</div>
+ <div class="hint">© <?=date('Y')?> Todos los derechos reservados por <a target="_blank" href="https://magustechnologies.com/"><strong>MAGUS TECHNOLOGIES</strong></a></div>
+ <div class="hint">Compatible SIHCE-MINSA</div>
+
 <script>
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
 cv.width=window.innerWidth;cv.height=window.innerHeight;

@@ -15,6 +15,7 @@ class SunatBuilder
     public static function buildComprobante(array $pago, array $paciente, array $items): array
     {
         $tipo = $pago['tipo_comprobante']; // 'factura' | 'boleta'
+        $aplica_igv = !isset($pago['aplica_igv']) || $pago['aplica_igv'];
 
         return [
             'endpoint'      => SUNAT_ENDPOINT,
@@ -26,7 +27,8 @@ class SunatBuilder
             'fecha_emision' => $pago['fecha'] ?? date('Y-m-d H:i:s'),
             'moneda'        => 'PEN',
             'forma_pago'    => 'contado',
-            'detalles'      => self::detalles($items),
+            'detalles'      => self::detalles($items, $aplica_igv),
+            'aplica_igv'    => $aplica_igv,
         ];
     }
 
@@ -73,10 +75,11 @@ class SunatBuilder
     }
 
     /**
-     * `pago_detalles.precio` se asume CON IGV incluido (el servicio Greenter
-     * divide entre 1.18 internamente).
+     * `pago_detalles.precio` se asume CON IGV incluido cuando aplica_igv=true
+     * (el servicio Greenter divide entre 1.18 internamente).
+     * Cuando aplica_igv=false, se marca como inafecto.
      */
-    private static function detalles(array $items): array
+    private static function detalles(array $items, bool $aplica_igv = true): array
     {
         $out = [];
         foreach ($items as $i => $it) {
@@ -86,6 +89,7 @@ class SunatBuilder
                 'descripcion'  => $it['concepto'] ?? 'Servicio dental',
                 'cantidad'     => (float) ($it['cantidad'] ?? 1),
                 'precio'       => (float) ($it['precio'] ?? 0),
+                'tipo_igv'     => $aplica_igv ? 'gravado' : 'inafecto',
             ];
         }
         return $out;

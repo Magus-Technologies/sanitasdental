@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/../../includes/config.php';
+require_once __DIR__.'/../../includes/config_sunat.php';
 requiereRol('admin');
 
 $titulo = 'Empresa';
@@ -12,24 +13,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($ap === 'guardar') {
         $d = [
-            'ruc'              => preg_replace('/\D/', '', $_POST['ruc'] ?? ''),
-            'razon_social'     => trim($_POST['razon_social'] ?? ''),
-            'nombre_comercial' => trim($_POST['nombre_comercial'] ?? ''),
-            'direccion'        => trim($_POST['direccion'] ?? ''),
-            'ubigeo'           => trim($_POST['ubigeo'] ?? ''),
-            'distrito'         => trim($_POST['distrito'] ?? ''),
-            'provincia'        => trim($_POST['provincia'] ?? ''),
-            'departamento'     => trim($_POST['departamento'] ?? ''),
-            'telefono'         => trim($_POST['telefono'] ?? ''),
-            'telefono2'        => trim($_POST['telefono2'] ?? ''),
-            'email'            => trim($_POST['email'] ?? ''),
-            'web'              => trim($_POST['web'] ?? ''),
-            'igv'              => (float)($_POST['igv'] ?? 18.00),
-            'moneda'           => trim($_POST['moneda'] ?? 'S/'),
-            'color_primario'   => trim($_POST['color_primario'] ?? '#00d4ee'),
-            'propaganda'       => trim($_POST['propaganda'] ?? ''),
-            'pie_pagina'       => trim($_POST['pie_pagina'] ?? ''),
-            'modo'             => in_array($_POST['modo'] ?? '', ['produccion','beta'], true) ? $_POST['modo'] : 'beta',
+            'ruc'               => preg_replace('/\D/', '', $_POST['ruc'] ?? ''),
+            'razon_social'      => trim($_POST['razon_social'] ?? ''),
+            'nombre_comercial'  => trim($_POST['nombre_comercial'] ?? ''),
+            'direccion'         => trim($_POST['direccion'] ?? ''),
+            'ubigeo'            => trim($_POST['ubigeo'] ?? ''),
+            'distrito'          => trim($_POST['distrito'] ?? ''),
+            'provincia'         => trim($_POST['provincia'] ?? ''),
+            'departamento'      => trim($_POST['departamento'] ?? ''),
+            'telefono'          => trim($_POST['telefono'] ?? ''),
+            'telefono2'         => trim($_POST['telefono2'] ?? ''),
+            'email'             => trim($_POST['email'] ?? ''),
+            'web'                => trim($_POST['web'] ?? ''),
+            'igv'                => (float)($_POST['igv'] ?? 18.00),
+            'moneda'             => trim($_POST['moneda'] ?? 'S/'),
+            'color_primario'     => trim($_POST['color_primario'] ?? '#00d4ee'),
+            'propaganda'         => trim($_POST['propaganda'] ?? ''),
+            'pie_pagina'         => trim($_POST['pie_pagina'] ?? ''),
+            'modo'               => in_array($_POST['modo'] ?? '', ['produccion','beta'], true) ? $_POST['modo'] : 'beta',
+            'sunat_usuario_sol'  => trim($_POST['sunat_usuario_sol'] ?? ''),
+            'sunat_clave_sol'    => trim($_POST['sunat_clave_sol'] ?? ''),
         ];
 
         if (strlen($d['ruc']) !== 11) {
@@ -71,6 +74,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         db()->prepare("UPDATE empresa SET logo=NULL WHERE id=1")->execute();
         auditar('QUITAR_LOGO_EMPRESA', 'empresa', 1);
         flash('ok', 'Logo eliminado.');
+        go('pages/admin/empresa.php');
+    }
+
+    // Sube el .pem al API Laravel firmador
+    if ($ap === 'subir_pem') {
+        if (empty($emp['ruc']) || strlen($emp['ruc']) !== 11) {
+            flash('error', 'Primero guarda un RUC válido (11 dígitos) antes de subir el certificado.');
+            go('pages/admin/empresa.php');
+        }
+        // URL del API auto-detectada en config_sunat.php (local vs producción)
+        $apiUrl = SUNAT_API_URL;
+        if (empty($_FILES['pem']['name']) || $_FILES['pem']['error'] !== UPLOAD_ERR_OK) {
+            flash('error', 'Selecciona un archivo .pem válido.');
+            go('pages/admin/empresa.php');
+        }
+        $tmp = $_FILES['pem']['tmp_name'];
+        $ext = strtolower(pathinfo($_FILES['pem']['name'], PATHINFO_EXTENSION));
+        if ($ext !== 'pem') {
+            flash('error', 'Solo se acepta archivo .pem (convertido desde tu .pfx con OpenSSL).');
+            go('pages/admin/empresa.php');
+        }
+        if ($_FILES['pem']['size'] > 512 * 1024) {
+            flash('error', 'El certificado no debe superar 512 KB.');
+            go('pages/admin/empresa.php');
+        }
+
+        $endpoint = rtrim($apiUrl, '/').'/guardar/certificado/'.$emp['ruc'];
+        $cfile = curl_file_create($tmp, 'application/x-pem-file', $_FILES['pem']['name']);
+
+        $ch = curl_init($endpoint);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => ['certificado' => $cfile],
+            CURLOPT_TIMEOUT        => 60,
+            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        $res  = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+
+        if ($res === false) {
+            flash('error', "No se pudo conectar al API SUNAT ($endpoint): $err");
+            go('pages/admin/empresa.php');
+        }
+        $j = json_decode($res, true);
+        if (!is_array($j) || empty($j['estado'])) {
+            $msg = $j['mensaje'] ?? "Respuesta HTTP $code: " . substr($res, 0, 200);
+            flash('error', "El API rechazó el certificado: $msg");
+            go('pages/admin/empresa.php');
+        }
+
+        // Marcar como subido
+        db()->prepare("UPDATE empresa SET certificado_subido=1, certificado_fecha=NOW() WHERE id=1")->execute();
+        auditar('SUBIR_CERTIFICADO_PEM', 'empresa', 1);
+        flash('ok', '✅ Certificado .pem subido correctamente al API SUNAT (RUC '.$emp['ruc'].').');
         go('pages/admin/empresa.php');
     }
 }
@@ -215,6 +276,58 @@ require_once __DIR__.'/../../includes/header.php';
     </div>
    </div>
 
+   <!-- Configuración SUNAT -->
+   <div class="card mb-4">
+    <div class="card-header"><span style="color:var(--t)"><i class="bi bi-shield-lock me-1"></i>Configuración SUNAT (firma electrónica)</span></div>
+    <div class="p-4">
+     <div class="row g-3">
+      <div class="col-12 col-md-6">
+       <label class="form-label">Usuario SOL</label>
+       <input type="text" name="sunat_usuario_sol" value="<?=e($emp['sunat_usuario_sol'] ?? '')?>" class="form-control" maxlength="45" placeholder="Ej: TUUSER01">
+       <small style="color:var(--t2);font-size:11px">Para BETA usa <code>MODDATOS</code></small>
+      </div>
+      <div class="col-12 col-md-6">
+       <label class="form-label">Clave SOL</label>
+       <input type="password" name="sunat_clave_sol" value="<?=e($emp['sunat_clave_sol'] ?? '')?>" class="form-control" maxlength="45" placeholder="••••••••">
+       <small style="color:var(--t2);font-size:11px">Para BETA usa <code>MODDATOS</code></small>
+      </div>
+     </div>
+    </div>
+   </div>
+
+   <!-- Certificado .pem (formulario aparte porque sube al API, no a la BD) -->
+   <div class="card mb-4">
+    <div class="card-header">
+     <span style="color:var(--t)"><i class="bi bi-file-earmark-lock me-1"></i>Certificado digital (.pem)</span>
+     <?php if (!empty($emp['certificado_subido'])): ?>
+      <span class="badge bg" title="Subido el <?=e($emp['certificado_fecha'] ?? '')?>">✅ CARGADO</span>
+     <?php else: ?>
+      <span class="badge br">❌ SIN CERTIFICADO</span>
+     <?php endif; ?>
+    </div>
+    <div class="p-4">
+     <?php if (!empty($emp['certificado_subido'])): ?>
+      <div class="alert" style="background:rgba(46,204,142,.08);border:1px solid rgba(46,204,142,.3);color:var(--t);padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:14px">
+       <i class="bi bi-check-circle-fill me-1" style="color:var(--g)"></i>
+       Hay un certificado vinculado al RUC <strong><?=e($emp['ruc'] ?? '—')?></strong> en el API SUNAT
+       (subido el <?=e($emp['certificado_fecha'] ?? '—')?>). Puedes reemplazarlo subiendo uno nuevo.
+      </div>
+     <?php endif; ?>
+     <small style="color:var(--t2);font-size:11px;display:block;margin-bottom:10px">
+      <i class="bi bi-info-circle me-1"></i>El archivo se envía directamente al API Laravel firmador
+      (<code>POST /guardar/certificado/<?=e($emp['ruc'] ?? '{RUC}')?></code>) y se guarda allí, no en este servidor.
+      <br>Si tu certificado original es <code>.pfx</code>, conviértelo con:
+      <code>openssl pkcs12 -in cert.pfx -out cert.pem -nodes</code>
+     </small>
+     <div class="d-flex gap-2 align-items-center flex-wrap">
+      <button type="button" class="btn btn-primary" id="btnSelectPem">
+       <i class="bi bi-cloud-upload me-1"></i><?=!empty($emp['certificado_subido']) ? 'Reemplazar certificado' : 'Subir certificado .pem'?>
+      </button>
+      <small id="pemFileName" style="color:var(--t2);font-size:11px"></small>
+     </div>
+    </div>
+   </div>
+
    <div class="card mb-4">
     <div class="card-header"><span style="color:var(--t)"><i class="bi bi-file-text me-1"></i>Textos del comprobante</span></div>
     <div class="p-4">
@@ -241,6 +354,12 @@ require_once __DIR__.'/../../includes/header.php';
  <input type="hidden" name="accion" value="quitar_logo">
 </form>
 <?php endif; ?>
+
+<!-- Form independiente para subir el .pem al API SUNAT -->
+<form method="POST" enctype="multipart/form-data" id="frmPem" style="display:none">
+ <input type="hidden" name="accion" value="subir_pem">
+ <input type="file" name="pem" id="pemFile" accept=".pem">
+</form>
 
 <script>
 (function () {
@@ -298,6 +417,36 @@ require_once __DIR__.'/../../includes/header.php';
  });
 
  rucInp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); btn.click(); } });
+
+ // Subida de certificado .pem (form independiente)
+ const btnPem    = document.getElementById('btnSelectPem');
+ const pemFile   = document.getElementById('pemFile');
+ const pemName   = document.getElementById('pemFileName');
+ const frmPem    = document.getElementById('frmPem');
+ if (btnPem && pemFile && frmPem) {
+  btnPem.addEventListener('click', () => pemFile.click());
+  pemFile.addEventListener('change', () => {
+   if (!pemFile.files[0]) return;
+   const f = pemFile.files[0];
+   if (!/\.pem$/i.test(f.name)) {
+    alert('Solo se acepta archivo .pem');
+    pemFile.value = '';
+    return;
+   }
+   if (f.size > 512 * 1024) {
+    alert('El certificado no debe superar 512 KB.');
+    pemFile.value = '';
+    return;
+   }
+   pemName.textContent = '📄 ' + f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+   if (confirm('¿Subir el certificado "' + f.name + '" al API SUNAT para el RUC actual?\n\nReemplazará cualquier certificado anterior.')) {
+    frmPem.submit();
+   } else {
+    pemFile.value = '';
+    pemName.textContent = '';
+   }
+  });
+ }
 })();
 </script>
 

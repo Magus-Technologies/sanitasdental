@@ -3,6 +3,7 @@
 # ============================================================
 
 # ---------- Configuración sensible ----------
+includes/config.php
 includes/config_tokens.php
 .env
 .env.*

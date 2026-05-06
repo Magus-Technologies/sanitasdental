@@ -86,9 +86,12 @@ $estadoColor = $ec[$pago['estado']] ?? '#777';
 // Boleta/Factura → formato SUNAT estándar (separado por |):
 //   RUC|TIPO|SERIE|NUMERO|IGV|TOTAL|FECHA|TIPO_DOC_CLIENTE|NUM_DOC_CLIENTE|HASH
 // Nota de venta → URL pública del PDF
+$aplica_igv = !isset($pago['aplica_igv']) || $pago['aplica_igv'];
 $codSunat = ['boleta'=>'03','factura'=>'01'];
 if (isset($codSunat[$tc])) {
-    $igv = round((float)$pago['total'] - ((float)$pago['total'] / 1.18), 2);
+    $igv = $aplica_igv
+        ? round((float)$pago['total'] - ((float)$pago['total'] / 1.18), 2)
+        : 0;
     $tipoDocCli = $tc === 'factura' ? '6' : '1';   // 1=DNI, 6=RUC
     $numDocCli  = $tc === 'factura' ? ($pago['ruc'] ?: '-') : ($pago['dni'] ?: '-');
     $qrParts = [
@@ -290,13 +293,17 @@ if ($fmt === 'ticket') {
 </table>
 <div class="sep"></div>
 <?php
- // Precios siempre incluyen IGV — desglose en todos los tipos
- $tkGrav = round((float)$pago['total'] / 1.18, 2);
- $tkIgv  = round((float)$pago['total'] - $tkGrav, 2);
+ if ($aplica_igv):
+  $tkGrav = round((float)$pago['total'] / 1.18, 2);
+  $tkIgv  = round((float)$pago['total'] - $tkGrav, 2);
 ?>
 <table class="tot">
  <tr><td>Op. Gravada</td><td class="r"><?=e($emp_mon)?> <?=number_format($tkGrav,2)?></td></tr>
  <tr><td>IGV (18%)</td><td class="r"><?=e($emp_mon)?> <?=number_format($tkIgv,2)?></td></tr>
+<?php else: ?>
+<table class="tot">
+ <tr><td>Op. Inafecta / Exonerada</td><td class="r"><?=e($emp_mon)?> <?=number_format((float)$pago['total'],2)?></td></tr>
+<?php endif; ?>
  <?php if((float)$pago['descuento']>0): ?>
  <tr><td>Descuento</td><td class="r">-<?=e($emp_mon)?> <?=number_format((float)$pago['descuento'],2)?></td></tr>
  <?php endif; ?>
@@ -319,9 +326,13 @@ if ($fmt === 'ticket') {
 </body></html><?php
 } else {
     // ─── A4 (estilo ilisava: tabla con bordes reales, cajas profesionales) ─
-    // Precios siempre incluyen IGV — desglose en todos los tipos
-    $totalGrav    = round((float)$pago['total'] / 1.18, 2);
-    $igvCalc      = round((float)$pago['total'] - $totalGrav, 2);
+    if ($aplica_igv) {
+        $totalGrav    = round((float)$pago['total'] / 1.18, 2);
+        $igvCalc      = round((float)$pago['total'] - $totalGrav, 2);
+    } else {
+        $totalGrav    = (float)$pago['total'];
+        $igvCalc      = 0;
+    }
     ?><!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8">
@@ -451,8 +462,8 @@ if ($fmt === 'ticket') {
    <th width="9%">CANT.</th>
    <th width="14%">CÓDIGO</th>
    <th width="46%" style="text-align:left;padding-left:5px">DESCRIPCIÓN</th>
-   <th width="12%">P. UNIT.<br><span style="font-size:6.5pt;font-weight:normal">(c/IGV)</span></th>
-   <th width="14%">IMPORTE<br><span style="font-size:6.5pt;font-weight:normal">(c/IGV)</span></th>
+    <th width="12%">P. UNIT.<br><span style="font-size:6.5pt;font-weight:normal"><?=$aplica_igv?'(c/IGV)':'(s/IGV)'?></span></th>
+    <th width="14%">IMPORTE<br><span style="font-size:6.5pt;font-weight:normal"><?=$aplica_igv?'(c/IGV)':'(s/IGV)'?></span></th>
   </tr>
  </thead>
  <tbody>
@@ -501,16 +512,20 @@ if ($fmt === 'ticket') {
    </td>
   </tr></table>
  </td>
- <td style="width:45%">
-  <!-- Caja superior: desglose IGV (precios incluyen IGV) -->
-  <table class="totals-up">
-   <tr><td class="lbl">OP. GRAVADAS: <?=e($emp_mon)?></td><td class="val"><?=number_format($totalGrav,2)?></td></tr>
-   <tr><td class="lbl">SUB TOTAL: <?=e($emp_mon)?></td><td class="val"><?=number_format($totalGrav,2)?></td></tr>
-   <tr><td class="lbl">IGV (18%): <?=e($emp_mon)?></td><td class="val"><?=number_format($igvCalc,2)?></td></tr>
-   <?php if((float)$pago['descuento']>0): ?>
-   <tr><td class="lbl">DESCUENTO: <?=e($emp_mon)?></td><td class="val">-<?=number_format((float)$pago['descuento'],2)?></td></tr>
-   <?php endif; ?>
-  </table>
+  <td style="width:45%">
+   <!-- Caja superior: desglose IGV -->
+   <table class="totals-up">
+    <?php if ($aplica_igv): ?>
+    <tr><td class="lbl">OP. GRAVADAS: <?=e($emp_mon)?></td><td class="val"><?=number_format($totalGrav,2)?></td></tr>
+    <tr><td class="lbl">IGV (18%): <?=e($emp_mon)?></td><td class="val"><?=number_format($igvCalc,2)?></td></tr>
+    <?php else: ?>
+    <tr><td class="lbl">OP. INAFECTA / EXONERADA: <?=e($emp_mon)?></td><td class="val"><?=number_format($totalGrav,2)?></td></tr>
+    <tr><td class="lbl">IGV: <?=e($emp_mon)?></td><td class="val">0.00</td></tr>
+    <?php endif; ?>
+    <?php if((float)$pago['descuento']>0): ?>
+    <tr><td class="lbl">DESCUENTO: <?=e($emp_mon)?></td><td class="val">-<?=number_format((float)$pago['descuento'],2)?></td></tr>
+    <?php endif; ?>
+   </table>
   <!-- Caja inferior: TOTAL -->
   <table class="totals-down"><tr>
    <td class="lbl">TOTAL: <?=e($emp_mon)?></td>

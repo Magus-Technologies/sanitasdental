@@ -1,7 +1,15 @@
 <?php
-// Auto-detecta entorno (LOCAL vs PRODUCCI�N) por hostname.
-// No hace falta cambiar nada al subir al servidor.
+/**
+ * config.example.php — PLANTILLA de configuración.
+ *
+ * Cópialo a `includes/config.php` y ajusta las contraseñas según tu entorno.
+ * El archivo `config.php` real NO se versiona en git (ver .gitignore).
+ *
+ *   cp includes/config.example.php includes/config.php
+ *   nano includes/config.php   # editar credenciales
+ */
 
+// Auto-detecta entorno (LOCAL vs PRODUCCIÓN) por hostname.
 $__host  = $_SERVER['HTTP_HOST'] ?? gethostname();
 $__isCli = PHP_SAPI === 'cli';
 $__dir   = strtolower(str_replace('\\', '/', __DIR__));
@@ -19,30 +27,30 @@ $__isLocal = (
 );
 
 if ($__isLocal) {
-    // -------- LOCAL (Laragon) --------
+    // ════════ LOCAL (Laragon / XAMPP) ════════
     define('DB_HOST',  'localhost');
-    define('DB_NAME',  'd_sanitas');
+    define('DB_NAME',  'dental');
     define('DB_USER',  'root');
-    define('DB_PASS',  '');
-    define('BASE_URL', '/DentalSys');
+    define('DB_PASS',  '');                              // ← cambia si usas contraseña en local
+    define('BASE_URL', '/DentalSys');                     // ← carpeta bajo www
     define('APP_ENV',  'development');
     define('MIGRATIONS_TOKEN', 'dev_local_token_no_importa');
 } else {
-    // -------- PRODUCCI�N (magus-ecommerce.com/dentalsanitas) --------
+    // ════════ PRODUCCIÓN ════════
     define('DB_HOST',  'localhost');
-    define('DB_NAME',  'd_sanitas');
-    define('DB_USER',  'root');
-    define('DB_PASS',  'c4p1cu4$$');
-    define('BASE_URL', '/dentalsanitas');
+    define('DB_NAME',  'dental');
+    define('DB_USER',  'TU_USUARIO_DB');                  // ← cambia
+    define('DB_PASS',  'TU_PASSWORD_DB');                 // ← cambia
+    define('BASE_URL', '/dental');                        // ← path bajo el dominio
     define('APP_ENV',  'production');
-    define('MIGRATIONS_TOKEN', 'CAMBIAR_POR_TOKEN_LARGO_Y_ALEATORIO');
+    define('MIGRATIONS_TOKEN', 'GENERA_UN_TOKEN_LARGO_Y_ALEATORIO');
 }
 
 define('UPLOAD_PATH', __DIR__ . '/../uploads/');
 define('APP_NAME',   'DentalSys');
 date_default_timezone_set('America/Lima');
 
-// -- BASE DE DATOS --------------------------------------
+// ── BASE DE DATOS ──────────────────────────────────────
 function db(): PDO {
     static $pdo = null;
     if (!$pdo) $pdo = new PDO(
@@ -55,7 +63,7 @@ function db(): PDO {
     return $pdo;
 }
 
-// -- SESI�N ---------------------------------------------
+// ── SESIÓN ─────────────────────────────────────────────
 function sesion(): void {
     if (session_status()===PHP_SESSION_NONE) {
         session_set_cookie_params(['lifetime'=>28800,'path'=>'/','httponly'=>true,'samesite'=>'Lax']);
@@ -69,49 +77,12 @@ function esRol(string ...$r): bool { return in_array(getRol(),$r); }
 function requiereLogin(): void { if(!estaLogueado()){ header('Location:'.BASE_URL.'/login.php'); exit; } }
 function requiereRol(string ...$r): void { requiereLogin(); if(!esRol(...$r)){ header('Location:'.BASE_URL.'/sin-permiso.php'); exit; } }
 
-
-/**
- * ¿El usuario actual tiene acceso a un módulo?
- *   puedeVer('facturacion') → true/false
- * - admin SIEMPRE puede ver todo.
- * - Otros roles según la tabla `rol_modulo`.
- */
-function puedeVer(string $modulo): bool {
-    if (!estaLogueado()) return false;
-    if (esRol('admin')) return true;
-    static $cache = null;
-    if ($cache === null) {
-        $cache = [];
-        try {
-            $rolId = (int)($_SESSION['rol_id'] ?? 0);
-            // Fallback para sesiones antiguas que solo tienen el nombre del rol
-            if (!$rolId && !empty($_SESSION['rol'])) {
-                $st = db()->prepare("SELECT id FROM roles WHERE nombre=?");
-                $st->execute([$_SESSION['rol']]);
-                $rolId = (int)$st->fetchColumn();
-                if ($rolId) $_SESSION['rol_id'] = $rolId;
-            }
-            if ($rolId) {
-                $st = db()->prepare("SELECT modulo FROM rol_modulo WHERE rol_id=?");
-                $st->execute([$rolId]);
-                $cache = array_flip($st->fetchAll(PDO::FETCH_COLUMN) ?: []);
-            }
-        } catch (Throwable $e) { $cache = []; }
-    }
-    return isset($cache[$modulo]);
-}
-function requiereModulo(string $modulo): void {
-    requiereLogin();
-    if (!puedeVer($modulo)) { header('Location:'.BASE_URL.'/sin-permiso.php'); exit; }
-}
-
-
-// -- HELPERS --------------------------------------------
+// ── HELPERS ────────────────────────────────────────────
 function e(string $s): string { return htmlspecialchars($s,ENT_QUOTES,'UTF-8'); }
 function mon(float $m): string { return getCfg('moneda','S/').' '.number_format($m,2); }
-function fDate(?string $d): string { return $d ? date('d/m/Y',strtotime($d)) : '�'; }
-function fDT(?string $d): string   { return $d ? date('d/m/Y H:i',strtotime($d)) : '�'; }
-function edad(?string $f): string  { return $f ? (new DateTime($f))->diff(new DateTime())->y.' a�os' : '�'; }
+function fDate(?string $d): string { return $d ? date('d/m/Y',strtotime($d)) : '—'; }
+function fDT(?string $d): string   { return $d ? date('d/m/Y H:i',strtotime($d)) : '—'; }
+function edad(?string $f): string  { return $f ? (new DateTime($f))->diff(new DateTime())->y.' años' : '—'; }
 function go(string $url): void     { header('Location:'.BASE_URL.'/'.ltrim($url,'/')); exit; }
 
 function flash(string $t, string $m): void { sesion(); $_SESSION['flash']=compact('t','m'); }
@@ -131,9 +102,9 @@ function getCfg(string $k, string $d=''): string {
 
 /**
  * Devuelve datos de la empresa (single-tenant: registro id=1).
- *   empresa()           ? array completo
- *   empresa('ruc')      ? string del campo
- *   empresa('logo',true)? ruta absoluta web del logo (con BASE_URL); '' si no hay
+ *   empresa()           → array completo
+ *   empresa('ruc')      → string del campo
+ *   empresa('logo',true)→ ruta absoluta web del logo (con BASE_URL); '' si no hay
  */
 function empresa(?string $campo = null, bool $urlLogo = false) {
     static $row = null;
@@ -149,8 +120,7 @@ function empresa(?string $campo = null, bool $urlLogo = false) {
 
 /**
  * Reserva el siguiente correlativo para un tipo de documento.
- * Devuelve ['serie'=>'B001','numero'=>123,'formateado'=>'B001-00000123'] o null si no hay serie activa.
- * At�mico: usa SELECT ... FOR UPDATE dentro de transacci�n.
+ * Atómico: usa SELECT ... FOR UPDATE dentro de transacción.
  */
 function siguienteCorrelativo(string $tipo, int $empresaId = 1): ?array {
     $pdo = db();

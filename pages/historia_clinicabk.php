@@ -43,16 +43,6 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   }
   header('Location:'.BASE_URL.'/pages/historia_clinica.php?id='.$hcId.'#adjuntos'); exit;
  }
- if($ap==='eliminar_plan'){
-  $planId = (int)$_POST['plan_id'];
-  $hcId   = (int)$_POST['hc_id'];
-  // Borrar detalles primero (FK), luego el plan
-  db()->prepare("DELETE FROM plan_detalles WHERE plan_id=?")->execute([$planId]);
-  db()->prepare("DELETE FROM planes_tratamiento WHERE id=?")->execute([$planId]);
-  auditar('ELIMINAR_PLAN','planes_tratamiento',$planId);
-  flash('ok','Plan de tratamiento eliminado.');
-  header('Location:'.BASE_URL.'/pages/historia_clinica.php?id='.$hcId.'#tpl'); exit;
- }
 }
 
 if($accion==='lista'){
@@ -108,21 +98,7 @@ if($accion==='lista'){
  $topbar_act='<a href="'.BASE_URL.'/pages/pacientes.php?accion=ver&id='.$hc['pid'].'" class="btn btn-dk btn-sm"><i class="bi bi-person me-1"></i>Paciente</a>
  <a href="?accion=editar&id='.$id.'" class="btn btn-dk btn-sm"><i class="bi bi-pencil me-1"></i>Editar HC</a>
  <a href="'.BASE_URL.'/pages/hc_pdf.php?id='.$id.'" target="_blank" class="btn btn-primary btn-sm"><i class="bi bi-file-pdf me-1"></i>Ver / Imprimir PDF</a>';
- $xhead = '<style>
-@media(max-width:768px){
-  /* HC tabs scroll on mobile */
-  .nav-tabs-scroll{padding-bottom:2px}
-  /* Evolution timeline compact */
-  .evolucion-item{padding:10px 12px!important}
-  .evol-header{flex-wrap:wrap;gap:4px}
-  /* Adjuntos grid */
-  .adj-grid .col-12{width:50%}
-}
-@media(max-width:480px){
-  .adj-grid .col-12{width:100%}
-}
-</style>';
-require_once __DIR__.'/../includes/header.php';
+ require_once __DIR__.'/../includes/header.php';
 ?>
 <?php if($hc['alergias']): ?>
 <div class="alert-bar alert-bar-r mb-4"><div class="d-flex align-items-center gap-2"><span>⚠️</span><strong style="color:var(--r)">ALERGIAS:</strong><span><?=e($hc['alergias'])?></span></div></div>
@@ -263,20 +239,7 @@ require_once __DIR__.'/../includes/header.php';
 <div class="tab-pane fade" id="tpl">
  <div class="card">
   <div class="card-header"><span style="color:var(--t)">💊 Plan de tratamiento</span>
-   <div class="d-flex gap-2">
-    <a href="<?=BASE_URL?>/pages/tratamientos.php?accion=plan&hc_id=<?=$id?>&pac_id=<?=$hc['pid']?>" class="btn btn-primary btn-sm">
-     <?php if($plan): ?><i class="bi bi-pencil me-1"></i>Editar plan<?php else: ?><i class="bi bi-plus-lg me-1"></i>Crear plan<?php endif; ?>
-    </a>
-    <?php if($plan): ?>
-    <form method="POST" class="d-inline" onsubmit="return confirm('¿Está seguro que quiere eliminar este plan de tratamiento?\n\nSe borrarán todos sus detalles y no se podrá recuperar.')">
-     <input type="hidden" name="accion" value="eliminar_plan">
-     <input type="hidden" name="plan_id" value="<?=$plan['id']?>">
-     <input type="hidden" name="hc_id" value="<?=$id?>">
-     <button type="submit" class="btn btn-del btn-sm"><i class="bi bi-trash me-1"></i>Eliminar plan</button>
-    </form>
-    <?php endif; ?>
-   </div>
-  </div>
+  <a href="<?=BASE_URL?>/pages/tratamientos.php?accion=plan&hc_id=<?=$id?>&pac_id=<?=$hc['pid']?>" class="btn btn-primary btn-sm">+ Crear/editar plan</a></div>
   <?php if($plan): ?>
   <div class="p-4">
    <div class="d-flex justify-content-between align-items-center mb-3">
@@ -381,11 +344,11 @@ require_once __DIR__.'/../includes/header.php';
 </div><!-- tab-content -->
 <?php
 $dmapJS=json_encode(array_values(array_map(fn($d)=>['n'=>$d['numero_diente'],'e'=>$d['estado'],'c'=>$d['cara'],'col'=>$d['color'],'notas'=>$d['notas']??''],$dmap)));
-$xscript=<<<'JS'
+$xscript=<<<JS
 <script>
 const colHex={rojo:'#E05252',azul:'#00D4EE',negro:'#445566',verde:'#2ECC8E'};
 let dm={};
-JSON.parse('__DMAP__').forEach(d=>dm[d.n]=d);
+JSON.parse('$dmapJS').forEach(d=>dm[d.n]=d);
 
 function colorOf(col){return colHex[col]||'none';}
 function updateDiente(num){
@@ -421,7 +384,6 @@ document.querySelectorAll('.dt').forEach(g=>{
 function limpiar(){if(!confirm('¿Limpiar todo el odontograma?'))return;dm={};document.querySelectorAll('.dt rect').forEach(r=>{r.setAttribute('fill','none');r.setAttribute('stroke-width','1');});document.querySelectorAll('.dt .dlbl').forEach(t=>t.remove());saveJson();}
 </script>
 JS;
-$xscript = str_replace('__DMAP__', $dmapJS, $xscript);
 require_once __DIR__.'/../includes/footer.php';
 
 }elseif($accion==='nueva'){

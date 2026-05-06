@@ -8,6 +8,13 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  if($ap==='guardar'){
   $ei=(int)($_POST['id']??0);
   $d=['nombres'=>trim($_POST['nombres']??''),'apellido_paterno'=>trim($_POST['apellido_paterno']??''),'apellido_materno'=>trim($_POST['apellido_materno']??''),'dni'=>trim($_POST['dni']??'')?:null,'ruc'=>trim($_POST['ruc']??'')?:null,'fecha_nacimiento'=>$_POST['fecha_nacimiento']??'' ?:null,'sexo'=>$_POST['sexo']??null,'estado_civil'=>$_POST['estado_civil']??null,'ocupacion'=>trim($_POST['ocupacion']??''),'telefono'=>trim($_POST['telefono']??''),'email'=>trim($_POST['email']??''),'direccion'=>trim($_POST['direccion']??''),'distrito'=>trim($_POST['distrito']??''),'tipo_seguro'=>$_POST['tipo_seguro']??'ninguno','num_seguro'=>trim($_POST['num_seguro']??''),'alergias'=>trim($_POST['alergias']??''),'enfermedades_base'=>trim($_POST['enfermedades_base']??''),'medicacion_actual'=>trim($_POST['medicacion_actual']??''),'cirugia_previa'=>trim($_POST['cirugia_previa']??''),'embarazo'=>isset($_POST['embarazo'])?1:0,'fuma'=>isset($_POST['fuma'])?1:0,'alcohol'=>isset($_POST['alcohol'])?1:0,'antecedentes_obs'=>trim($_POST['antecedentes_obs']??''),'contacto_nombre'=>trim($_POST['contacto_nombre']??''),'contacto_telefono'=>trim($_POST['contacto_telefono']??''),'contacto_parentesco'=>trim($_POST['contacto_parentesco']??'')];
+  
+  // Procesar foto de perfil
+  if(isset($_FILES['foto_perfil']) && $_FILES['foto_perfil']['error'] === UPLOAD_ERR_OK) {
+   $foto = subirArchivo($_FILES['foto_perfil'], 'fotos_perfil', ['jpg','jpeg','png','webp']);
+   if($foto) $d['foto_perfil'] = $foto;
+  }
+  
   if($ei){
    $sets=implode(',',array_map(fn($k)=>"$k=?",array_keys($d)));
    db()->prepare("UPDATE pacientes SET $sets,updated_at=NOW() WHERE id=?")->execute([...array_values($d),$ei]);
@@ -54,7 +61,11 @@ if($accion==='lista'){
   <tr>
    <td class="mon" style="color:var(--c);font-size:11px"><?=e($p['codigo'])?></td>
    <td><div class="d-flex align-items-center gap-2">
-    <div class="ava"><?=strtoupper(substr($p['nombres'],0,1))?></div>
+    <?php if($p['foto_perfil']): ?>
+     <img src="<?=BASE_URL?>/uploads/<?=e($p['foto_perfil'])?>" class="rounded-circle" style="width:36px;height:36px;object-fit:cover;flex-shrink:0" alt="Foto">
+    <?php else: ?>
+     <div class="ava"><?=strtoupper(substr($p['nombres'],0,1))?></div>
+    <?php endif; ?>
     <div><strong><?=e($p['nombres'].' '.$p['apellido_paterno'])?></strong>
     <?php if($p['alergias']): ?><br><span class="badge br" style="font-size:9px">⚠ Alérgico</span><?php endif; ?></div>
    </div></td>
@@ -65,6 +76,8 @@ if($accion==='lista'){
    <td><div class="d-flex gap-1">
     <a href="?accion=ver&id=<?=$p['id']?>" class="btn btn-dk btn-ico"><i class="bi bi-eye"></i></a>
     <a href="<?=BASE_URL?>/pages/historia_clinica.php?paciente_id=<?=$p['id']?>" class="btn btn-ico bc" style="border:1px solid rgba(0,212,238,.3)" title="HC"><i class="bi bi-file-medical-fill"></i></a>
+    <a href="<?=BASE_URL?>/pages/recetarios.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="border:1px solid rgba(236,72,153,.3);color:#ec4899" title="Recetas"><i class="bi bi-prescription2"></i></a>
+    <a href="<?=BASE_URL?>/pages/ortodoncias.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="border:1px solid rgba(6,182,212,.3);color:#06B6D4" title="Ortodoncia"><i class="bi bi-grid-3x2-gap"></i></a>
     <a href="<?=BASE_URL?>/pages/citas.php?accion=nueva&paciente_id=<?=$p['id']?>" class="btn btn-ico btn-ok" title="Agendar"><i class="bi bi-calendar-plus"></i></a>
    </div></td>
   </tr>
@@ -89,105 +102,456 @@ if($accion==='lista'){
  $hcs=db()->prepare("SELECT hc.*,CONCAT(u.nombre,' ',u.apellidos) AS dr FROM historias_clinicas hc LEFT JOIN usuarios u ON hc.doctor_id=u.id WHERE hc.paciente_id=? ORDER BY hc.fecha_apertura DESC"); $hcs->execute([$id]); $hcs=$hcs->fetchAll();
  $cit=db()->prepare("SELECT c.*,CONCAT(u.nombre,' ',u.apellidos) AS dr FROM citas c JOIN usuarios u ON c.doctor_id=u.id WHERE c.paciente_id=? ORDER BY c.fecha DESC LIMIT 8"); $cit->execute([$id]); $cit=$cit->fetchAll();
  $pags=db()->prepare("SELECT * FROM pagos WHERE paciente_id=? ORDER BY fecha DESC LIMIT 6"); $pags->execute([$id]); $pags=$pags->fetchAll();
+ 
+ // Obtener HC más reciente para signos vitales
+ $hc_actual = $hcs[0] ?? null;
+ 
  $titulo=$pac['nombres'].' '.$pac['apellido_paterno']; $pagina_activa='pac';
  $topbar_act='<a href="?accion=editar&id='.$id.'" class="btn btn-dk btn-sm"><i class="bi bi-pencil me-1"></i>Editar</a>
- <a href="'.BASE_URL.'/pages/citas.php?accion=nueva&paciente_id='.$id.'" class="btn btn-primary btn-sm"><i class="bi bi-calendar-plus me-1"></i>Agendar</a>';
+ <a href="'.BASE_URL.'/pages/pacientes.php" class="btn btn-dk btn-sm"><i class="bi bi-arrow-left me-1"></i>Volver</a>
+ <a href="'.BASE_URL.'/pages/citas.php?accion=nueva&paciente_id='.$id.'" class="btn btn-primary btn-sm"><i class="bi bi-calendar-plus me-1"></i>Agendar</a>
+ <a href="'.BASE_URL.'/pages/ortodoncias.php?paciente_id='.$id.'" class="btn btn-sm" style="background:#06B6D4;border-color:#06B6D4;color:white"><i class="bi bi-grid-3x2-gap me-1"></i>Ortodoncia</a>';
+ 
+ // CSS para dashboard de cards
+ $xhead = '<style>
+ .dashboard-card {
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: all 0.2s ease;
+  height: 100%;
+ }
+ .dashboard-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+ }
+ .card-header-custom {
+  background: linear-gradient(135deg, var(--c) 0%, #0891b2 100%);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 11px 11px 0 0;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+ }
+ .card-body-custom {
+  padding: 16px;
+ }
+ .profile-photo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--c) 0%, #0891b2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  border: 3px solid white;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+ }
+ .timeline-item {
+  position: relative;
+  padding-left: 24px;
+  margin-bottom: 12px;
+  border-left: 2px solid var(--bd2);
+ }
+ .timeline-item::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+ }
+ .timeline-item:last-child {
+  border-left-color: transparent;
+ }
+ .vital-sign {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  border: 1px solid var(--bd2);
+ }
+ .vital-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--c);
+  display: block;
+ }
+ .vital-label {
+  font-size: 11px;
+  color: var(--t2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+ }
+ .quick-action {
+  background: var(--bg3);
+  border: 1px solid var(--bd2);
+  border-radius: 8px;
+  padding: 12px;
+  text-decoration: none;
+  color: var(--t);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+ }
+ .quick-action:hover {
+  background: var(--c);
+  color: white;
+  transform: translateX(4px);
+ }
+ .stat-mini {
+  background: var(--bg3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  text-align: center;
+  border: 1px solid var(--bd2);
+ }
+ </style>';
+ 
  require_once __DIR__.'/../includes/header.php';
  $sb=['ninguno'=>'bgr','sis'=>'bg','essalud'=>'bb','privado'=>'bc','otros'=>'ba'];
  $ec=['pendiente'=>'ba','confirmado'=>'bc','en_atencion'=>'bb','atendido'=>'bg','no_asistio'=>'br','cancelado'=>'bgr'];
 ?>
-<div class="row g-4">
- <div class="col-12 col-lg-4">
-  <div class="card mb-4">
-   <div class="p-4 text-center" style="border-bottom:1px solid var(--bd2)">
-    <div class="ava mx-auto mb-3" style="width:60px;height:60px;font-size:24px"><?=strtoupper(substr($pac['nombres'],0,1))?></div>
-    <h2 style="font-size:17px;font-weight:800;margin:0"><?=e($pac['nombres'].' '.$pac['apellido_paterno'].' '.($pac['apellido_materno']??''))?></h2>
-    <p style="color:var(--t2);font-size:12px;margin:3px 0"><?=e($pac['codigo'])?></p>
-    <div class="d-flex gap-2 justify-content-center flex-wrap mt-2">
-     <span class="badge <?=$sb[$pac['tipo_seguro']]?>"><?=strtoupper($pac['tipo_seguro'])?></span>
-     <?php if($pac['alergias']): ?><span class="badge br">⚠ ALERGIAS</span><?php endif; ?>
+<!-- DISEÑO COMPACTO CON CARDS -->
+<div class="row g-3">
+ <!-- Card de Perfil -->
+ <div class="col-12 col-lg-6 col-xl-4">
+  <div class="card h-100">
+   <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-person-circle" style="color:var(--c)"></i>
+    <span style="font-weight:600">Perfil del Paciente</span>
+   </div>
+   <div class="p-3 text-center">
+    <?php if($pac['foto_perfil']): ?>
+     <img src="<?=BASE_URL?>/uploads/<?=e($pac['foto_perfil'])?>" class="rounded-circle mb-3" style="width:80px;height:80px;object-fit:cover" alt="Foto">
+    <?php else: ?>
+     <div class="ava mx-auto mb-3" style="width:80px;height:80px;font-size:32px"><?=strtoupper(substr($pac['nombres'],0,1))?></div>
+    <?php endif; ?>
+    <h3 style="font-size:19px;font-weight:700;margin:0 0 4px"><?=e($pac['nombres'].' '.$pac['apellido_paterno'])?></h3>
+    <p style="color:var(--t2);font-size:14px;margin:0"><?=e($pac['codigo'])?> · <?=$pac['fecha_nacimiento']?edad($pac['fecha_nacimiento']):'—'?></p>
+    <div class="d-flex gap-1 justify-content-center flex-wrap mt-2">
+     <span class="badge <?=$sb[$pac['tipo_seguro']]?>" style="font-size:11px"><?=strtoupper($pac['tipo_seguro'])?></span>
+     <?php if($pac['alergias']): ?><span class="badge br" style="font-size:11px">⚠ ALERGIAS</span><?php endif; ?>
     </div>
    </div>
-   <div class="p-4" style="font-size:13px">
-    <?php $inf=[['bi-calendar3','Nacimiento/Edad',$pac['fecha_nacimiento']?fDate($pac['fecha_nacimiento']).' ('.edad($pac['fecha_nacimiento']).')':'—'],['bi-phone','Teléfono',$pac['telefono']??'—'],['bi-envelope','Email',$pac['email']??'—'],['bi-card-text','DNI',$pac['dni']??'—'],['bi-geo-alt','Distrito',$pac['distrito']??'—']];
-    foreach($inf as[$ico,$lbl,$val]): ?>
-    <div class="d-flex gap-2 mb-2"><i class="bi <?=$ico?>" style="color:var(--c);flex-shrink:0;margin-top:1px"></i><div><small style="color:var(--t2)"><?=$lbl?></small><div style="font-weight:600"><?=e($val)?></div></div></div>
-    <?php endforeach; ?>
-   </div>
-  </div>
-  <?php if($pac['alergias']||$pac['enfermedades_base']||$pac['medicacion_actual']): ?>
-  <div class="card mb-4">
-   <div class="card-header"><span style="color:var(--t)"><i class="bi bi-heart-pulse me-1"></i>Antecedentes médicos</span></div>
-   <div class="p-4" style="font-size:12px">
-    <?php if($pac['alergias']): ?><div class="mb-3"><div style="font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;margin-bottom:3px">⚠️ Alergias</div><div style="background:rgba(224,82,82,.08);padding:8px 10px;border-radius:6px;border-left:3px solid var(--r)"><?=e($pac['alergias'])?></div></div><?php endif; ?>
-    <?php if($pac['medicacion_actual']): ?><div class="mb-3"><div style="font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;margin-bottom:3px">💊 Medicación</div><div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><?=e($pac['medicacion_actual'])?></div></div><?php endif; ?>
-    <?php if($pac['enfermedades_base']): ?><div><div style="font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;margin-bottom:3px">🏥 Enfermedades base</div><div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><?=e($pac['enfermedades_base'])?></div></div><?php endif; ?>
-    <div class="d-flex gap-2 flex-wrap mt-2">
-     <?php if($pac['embarazo']): ?><span class="badge ba">🤰 Embarazada</span><?php endif; ?>
-     <?php if($pac['fuma']): ?><span class="badge br">🚬 Fumador</span><?php endif; ?>
-     <?php if($pac['alcohol']): ?><span class="badge ba">🍺 Alcohol</span><?php endif; ?>
+   <div class="p-3 pt-0" style="font-size:15px">
+    <div class="row g-2">
+     <div class="col-6"><i class="bi bi-phone" style="color:var(--c)"></i> <?=e($pac['telefono']??'—')?></div>
+     <div class="col-6"><i class="bi bi-card-text" style="color:var(--c)"></i> <?=e($pac['dni']??'—')?></div>
+     <div class="col-12"><i class="bi bi-envelope" style="color:var(--c)"></i> <?=e($pac['email']??'—')?></div>
     </div>
    </div>
   </div>
-  <?php endif; ?>
-  <div class="card">
-   <div class="card-header"><span style="color:var(--t)"><i class="bi bi-lightning me-1"></i>Acciones rápidas</span></div>
-   <div class="p-3 d-grid gap-2">
-    <a href="<?=BASE_URL?>/pages/historia_clinica.php?paciente_id=<?=$id?>" class="btn btn-primary"><i class="bi bi-file-medical-fill me-2"></i>Historia clínica</a>
-    <a href="<?=BASE_URL?>/pages/odontograma.php?paciente_id=<?=$id?>" class="btn btn-dk" style="border-color:rgba(0,212,238,.3);color:var(--c)"><i class="bi bi-grid-3x3-gap-fill me-2"></i>Odontograma</a>
-        <a href="<?=BASE_URL?>/pages/citas.php?accion=nueva&paciente_id=<?=$id?>" class="btn btn-dk"><i class="bi bi-calendar-plus me-2"></i>Nueva cita</a>
-    <a href="<?=BASE_URL?>/pages/pagos.php?accion=nuevo&paciente_id=<?=$id?>" class="btn btn-dk"><i class="bi bi-cash me-2"></i>Registrar pago</a>
-    <?php if($pac['telefono']): ?>
-    <a href="<?=urlWA($pac['telefono'],'Hola '.$pac['nombres'].', le contactamos desde '.getCfg('clinica_nombre').'. ')?>" target="_blank" class="btn btn-wa"><i class="bi bi-whatsapp me-2"></i>WhatsApp</a>
+ </div>
+
+ <!-- Card de Vitales -->
+ <div class="col-12 col-lg-6 col-xl-4">
+  <div class="card h-100">
+   <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-heart-pulse" style="color:#e74c3c"></i>
+    <span style="font-weight:600">Signos Vitales</span>
+   </div>
+   <div class="p-3">
+    <?php 
+    // Obtener últimos signos vitales de HC más reciente
+    $vitales = ['presion_arterial' => $pac['presion_arterial'] ?? null, 'peso' => $pac['peso'] ?? null, 'talla' => $pac['talla'] ?? null];
+    if($hcs) {
+     $hc_reciente = $hcs[0];
+     $vitales['presion_arterial'] = $hc_reciente['presion_arterial'] ?? $vitales['presion_arterial'];
+     $vitales['peso'] = $hc_reciente['peso'] ?? $vitales['peso'];
+     $vitales['talla'] = $hc_reciente['talla'] ?? $vitales['talla'];
+    }
+    ?>
+    <div class="row g-2 text-center">
+     <div class="col-4">
+      <div style="background:rgba(231,76,60,.1);border-radius:8px;padding:12px">
+       <i class="bi bi-heart" style="color:#e74c3c;font-size:20px;display:block;margin-bottom:4px"></i>
+       <div style="font-size:16px;font-weight:700;color:var(--t)"><?=$vitales['presion_arterial']??'—'?></div>
+       <small style="color:var(--t2);font-size:10px">Presión Arterial</small>
+      </div>
+     </div>
+     <div class="col-4">
+      <div style="background:rgba(52,152,219,.1);border-radius:8px;padding:12px">
+       <i class="bi bi-speedometer2" style="color:#3498db;font-size:20px;display:block;margin-bottom:4px"></i>
+       <div style="font-size:16px;font-weight:700;color:var(--t)"><?=$vitales['peso']?$vitales['peso'].' kg':'—'?></div>
+       <small style="color:var(--t2);font-size:10px">Peso</small>
+      </div>
+     </div>
+     <div class="col-4">
+      <div style="background:rgba(46,204,113,.1);border-radius:8px;padding:12px">
+       <i class="bi bi-rulers" style="color:#2ecc71;font-size:20px;display:block;margin-bottom:4px"></i>
+       <div style="font-size:16px;font-weight:700;color:var(--t)"><?=$vitales['talla']?$vitales['talla'].' m':'—'?></div>
+       <small style="color:var(--t2);font-size:10px">Talla</small>
+      </div>
+     </div>
+    </div>
+    <?php if($pac['alergias']||$pac['enfermedades_base']||$pac['medicacion_actual']): ?>
+    <div class="mt-3 pt-2" style="border-top:1px solid var(--bd2)">
+     <small style="color:var(--t2);font-size:11px;font-weight:700">ALERTAS MÉDICAS</small>
+     <?php if($pac['alergias']): ?><div class="mt-1" style="background:rgba(224,82,82,.08);padding:6px 8px;border-radius:4px;font-size:12px;border-left:2px solid #e05252">⚠️ <?=e(substr($pac['alergias'],0,40))?><?=strlen($pac['alergias'])>40?'...':''?></div><?php endif; ?>
+     <?php if($pac['medicacion_actual']): ?><div class="mt-1" style="background:rgba(52,152,219,.08);padding:6px 8px;border-radius:4px;font-size:12px;border-left:2px solid #3498db">💊 <?=e(substr($pac['medicacion_actual'],0,40))?><?=strlen($pac['medicacion_actual'])>40?'...':''?></div><?php endif; ?>
+    </div>
     <?php endif; ?>
    </div>
   </div>
  </div>
- <div class="col-12 col-lg-8">
-  <ul class="nav nav-tabs mb-4">
-   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" data-bs-target="#th">📋 HC (<?=count($hcs)?>)</a></li>
-   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" data-bs-target="#tc">📅 Citas (<?=count($cit)?>)</a></li>
-   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" data-bs-target="#tp">💰 Pagos (<?=count($pags)?>)</a></li>
-  </ul>
-  <div class="tab-content">
-   <div class="tab-pane fade show active" id="th">
-    <?php if($hcs): ?><div class="d-grid gap-3"><?php foreach($hcs as $hc): ?>
-    <div class="card p-4">
-     <div class="d-flex justify-content-between mb-2">
-      <div><span class="badge bc me-2"><?=e($hc['numero_hc'])?></span><span class="badge <?=$hc['estado']==='activa'?'bg':'bgr'?>"><?=$hc['estado']?></span></div>
-      <small><?=fDate($hc['fecha_apertura'])?></small>
-     </div>
-     <p style="font-size:13px;margin:0 0 6px"><strong>Motivo:</strong> <?=e(substr($hc['motivo_consulta'],0,80))?></p>
-     <?php if($hc['dr']): ?><small style="color:var(--t2)">Dr. <?=e($hc['dr'])?></small><?php endif; ?>
-     <div class="mt-3"><a href="<?=BASE_URL?>/pages/historia_clinica.php?id=<?=$hc['id']?>" class="btn btn-primary btn-sm"><i class="bi bi-file-medical me-1"></i>Abrir HC</a></div>
+
+ <!-- Card de Consulta Actual -->
+ <div class="col-12 col-xl-4">
+  <div class="card h-100">
+   <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-clipboard-pulse" style="color:var(--c)"></i>
+    <span style="font-weight:600">Acceso Rápido</span>
+   </div>
+   <div class="p-3">
+    <div class="d-grid gap-2">
+     <a href="<?=BASE_URL?>/pages/historia_clinica.php?paciente_id=<?=$id?>" class="btn btn-primary btn-sm"><i class="bi bi-file-medical me-1"></i>Historia Clínica</a>
+     <a href="<?=BASE_URL?>/pages/odontograma.php?paciente_id=<?=$id?>" class="btn btn-dk btn-sm" style="border-color:rgba(0,212,238,.3);color:var(--c)"><i class="bi bi-grid-3x3-gap me-1"></i>Odontograma</a>
+     <a href="<?=BASE_URL?>/pages/recetarios.php?paciente_id=<?=$id?>" class="btn btn-dk btn-sm" style="border-color:rgba(236,72,153,.3);color:#ec4899"><i class="bi bi-prescription2 me-1"></i>Recetarios</a>
+     <a href="<?=BASE_URL?>/pages/ortodoncias.php?paciente_id=<?=$id?>" class="btn btn-dk btn-sm" style="border-color:rgba(6,182,212,.3);color:#06B6D4"><i class="bi bi-grid-3x2-gap me-1"></i>Ortodoncia</a>
+     <a href="<?=BASE_URL?>/pages/citas.php?accion=nueva&paciente_id=<?=$id?>" class="btn btn-dk btn-sm"><i class="bi bi-calendar-plus me-1"></i>Nueva Cita</a>
+     <a href="<?=BASE_URL?>/pages/pagos.php?accion=nuevo&paciente_id=<?=$id?>" class="btn btn-dk btn-sm"><i class="bi bi-cash me-1"></i>Registrar Pago</a>
+     <?php if($pac['telefono']): ?>
+     <a href="<?=urlWA($pac['telefono'],'Hola '.$pac['nombres'].', le contactamos desde '.getCfg('clinica_nombre').'. ')?>" target="_blank" class="btn btn-wa btn-sm"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
+     <?php endif; ?>
     </div>
-    <?php endforeach; ?></div>
-    <?php else: ?>
-    <div class="card p-4 text-center" style="color:var(--t2)"><i class="bi bi-file-medical" style="font-size:36px;display:block;margin-bottom:8px"></i>Sin historias clínicas<br>
-    <a href="<?=BASE_URL?>/pages/historia_clinica.php?accion=nueva&paciente_id=<?=$id?>" class="btn btn-primary mt-3">Crear primera HC</a></div>
+    
+    <?php if($hcs): ?>
+    <div class="mt-3 pt-2" style="border-top:1px solid var(--bd2)">
+     <small style="color:var(--t2);font-size:10px;font-weight:700">ÚLTIMA CONSULTA</small>
+     <?php $ultima_hc = $hcs[0]; ?>
+     <div class="mt-1" style="font-size:11px">
+      <div class="d-flex justify-content-between">
+       <span class="badge bc" style="font-size:9px"><?=e($ultima_hc['numero_hc'])?></span>
+       <small style="color:var(--t2)"><?=fDate($ultima_hc['fecha_apertura'])?></small>
+      </div>
+      <div style="margin-top:4px;color:var(--t)"><?=e(substr($ultima_hc['motivo_consulta'],0,60))?><?=strlen($ultima_hc['motivo_consulta'])>60?'...':''?></div>
+     </div>
+    </div>
     <?php endif; ?>
    </div>
-   <div class="tab-pane fade" id="tc">
-    <div class="table-responsive"><table class="table mb-0">
-    <thead><tr><th>Fecha</th><th>Hora</th><th>Doctor</th><th>Estado</th><th></th></tr></thead><tbody>
-    <?php foreach($cit as $c): ?><tr>
-     <td><?=fDate($c['fecha'])?></td><td class="mon" style="color:var(--c)"><?=substr($c['hora_inicio'],0,5)?></td>
-     <td><small><?=e($c['dr'])?></small></td><td><span class="badge <?=$ec[$c['estado']]?>"><?=$c['estado']?></span></td>
-     <td><a href="<?=BASE_URL?>/pages/citas.php?accion=ver&id=<?=$c['id']?>" class="btn btn-dk btn-ico"><i class="bi bi-eye"></i></a></td>
-    </tr><?php endforeach; ?></tbody></table></div>
+  </div>
+ </div>
+
+ <!-- Card de Evolución (Timeline) -->
+ <div class="col-12">
+  <div class="card">
+   <div class="card-header d-flex align-items-center gap-2">
+    <i class="bi bi-clock-history" style="color:#f39c12"></i>
+    <span style="font-weight:600">Línea de Tiempo - Evolución del Paciente</span>
    </div>
-   <div class="tab-pane fade" id="tp">
-    <div class="table-responsive"><table class="table mb-0">
-    <thead><tr><th>Código</th><th>Fecha</th><th>Total</th><th>Método</th><th>Estado</th></tr></thead><tbody>
-    <?php foreach($pags as $pg): ?><tr>
-     <td class="mon" style="color:var(--c);font-size:11px"><?=e($pg['codigo'])?></td><td><small><?=fDate($pg['fecha'])?></small></td>
-     <td class="mon fw-bold"><?=mon((float)$pg['total'])?></td><td><span class="badge bgr"><?=strtoupper($pg['metodo'])?></span></td>
-     <td><span class="badge <?=$pg['estado']==='pagado'?'bg':($pg['estado']==='anulado'?'br':'ba')?>"><?=$pg['estado']?></span></td>
-    </tr><?php endforeach; ?></tbody></table></div>
+   <div class="p-3">
+    <ul class="nav nav-pills nav-fill mb-3">
+     <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" data-bs-target="#timeline-hc">📋 HC (<?=count($hcs)?>)</a></li>
+     <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" data-bs-target="#timeline-citas">📅 Citas (<?=count($cit)?>)</a></li>
+     <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" data-bs-target="#timeline-pagos">💰 Pagos (<?=count($pags)?>)</a></li>
+    </ul>
+    
+    <div class="tab-content">
+     <!-- Timeline HC -->
+     <div class="tab-pane fade show active" id="timeline-hc">
+      <?php if($hcs): ?>
+       <div class="timeline">
+        <?php foreach(array_slice($hcs,0,5) as $i => $hc): ?>
+         <div class="timeline-item">
+          <div class="timeline-marker" style="background:<?=$hc['estado']==='activa'?'var(--c)':'#95a5a6'?>">
+           <i class="bi bi-file-medical"></i>
+          </div>
+          <div class="timeline-content">
+           <div class="d-flex justify-content-between align-items-start mb-1">
+            <div>
+             <span class="badge bc me-1" style="font-size:9px"><?=e($hc['numero_hc'])?></span>
+             <span class="badge <?=$hc['estado']==='activa'?'bg':'bgr'?>" style="font-size:9px"><?=$hc['estado']?></span>
+            </div>
+            <small style="color:var(--t2);font-size:10px"><?=fDate($hc['fecha_apertura'])?></small>
+           </div>
+           <div style="font-size:12px;color:var(--t);margin-bottom:4px"><?=e(substr($hc['motivo_consulta'],0,100))?><?=strlen($hc['motivo_consulta'])>100?'...':''?></div>
+           <?php if($hc['dr']): ?><small style="color:var(--t2);font-size:10px">Dr. <?=e($hc['dr'])?></small><?php endif; ?>
+           <div class="mt-2">
+            <a href="<?=BASE_URL?>/pages/historia_clinica.php?id=<?=$hc['id']?>" class="btn btn-primary btn-xs">Abrir HC</a>
+           </div>
+          </div>
+         </div>
+        <?php endforeach; ?>
+       </div>
+      <?php else: ?>
+       <div class="text-center py-4" style="color:var(--t2)">
+        <i class="bi bi-file-medical" style="font-size:32px;display:block;margin-bottom:8px"></i>
+        <div style="font-size:13px">Sin historias clínicas registradas</div>
+        <a href="<?=BASE_URL?>/pages/historia_clinica.php?accion=nueva&paciente_id=<?=$id?>" class="btn btn-primary btn-sm mt-2">Crear primera HC</a>
+       </div>
+      <?php endif; ?>
+     </div>
+     
+     <!-- Timeline Citas -->
+     <div class="tab-pane fade" id="timeline-citas">
+      <?php if($cit): ?>
+       <div class="timeline">
+        <?php foreach(array_slice($cit,0,5) as $c): ?>
+         <div class="timeline-item">
+          <div class="timeline-marker" style="background:<?=['pendiente'=>'#f39c12','confirmado'=>'#3498db','atendido'=>'#2ecc71','no_asistio'=>'#e74c3c'][$c['estado']]??'#95a5a6'?>">
+           <i class="bi bi-calendar-event"></i>
+          </div>
+          <div class="timeline-content">
+           <div class="d-flex justify-content-between align-items-start mb-1">
+            <span class="badge <?=$ec[$c['estado']]?>" style="font-size:9px"><?=$c['estado']?></span>
+            <small style="color:var(--t2);font-size:10px"><?=fDate($c['fecha'])?> <?=substr($c['hora_inicio'],0,5)?></small>
+           </div>
+           <div style="font-size:12px;color:var(--t);margin-bottom:2px">Dr. <?=e($c['dr'])?></div>
+           <?php if($c['motivo']): ?><div style="font-size:11px;color:var(--t2)"><?=e(substr($c['motivo'],0,80))?><?=strlen($c['motivo'])>80?'...':''?></div><?php endif; ?>
+          </div>
+         </div>
+        <?php endforeach; ?>
+       </div>
+      <?php else: ?>
+       <div class="text-center py-4" style="color:var(--t2)">
+        <i class="bi bi-calendar-x" style="font-size:32px;display:block;margin-bottom:8px"></i>
+        <div style="font-size:13px">Sin citas registradas</div>
+       </div>
+      <?php endif; ?>
+     </div>
+     
+     <!-- Timeline Pagos -->
+     <div class="tab-pane fade" id="timeline-pagos">
+      <?php if($pags): ?>
+       <div class="timeline">
+        <?php foreach(array_slice($pags,0,5) as $pg): ?>
+         <div class="timeline-item">
+          <div class="timeline-marker" style="background:<?=$pg['estado']==='pagado'?'#2ecc71':($pg['estado']==='anulado'?'#e74c3c':'#f39c12')?>">
+           <i class="bi bi-cash-coin"></i>
+          </div>
+          <div class="timeline-content">
+           <div class="d-flex justify-content-between align-items-start mb-1">
+            <span class="badge <?=$pg['estado']==='pagado'?'bg':($pg['estado']==='anulado'?'br':'ba')?>" style="font-size:9px"><?=$pg['estado']?></span>
+            <small style="color:var(--t2);font-size:10px"><?=fDate($pg['fecha'])?></small>
+           </div>
+           <div class="d-flex justify-content-between align-items-center">
+            <div>
+             <div style="font-size:12px;color:var(--t);font-weight:600"><?=mon((float)$pg['total'])?></div>
+             <small style="color:var(--t2);font-size:10px"><?=e($pg['codigo'])?> · <?=strtoupper($pg['metodo'])?></small>
+            </div>
+           </div>
+          </div>
+         </div>
+        <?php endforeach; ?>
+       </div>
+      <?php else: ?>
+       <div class="text-center py-4" style="color:var(--t2)">
+        <i class="bi bi-cash-stack" style="font-size:32px;display:block;margin-bottom:8px"></i>
+        <div style="font-size:13px">Sin pagos registrados</div>
+       </div>
+      <?php endif; ?>
+     </div>
+    </div>
    </div>
   </div>
  </div>
 </div>
+
+<!-- CSS para Timeline -->
+<style>
+.timeline {
+ position: relative;
+ padding-left: 30px;
+}
+
+.timeline::before {
+ content: '';
+ position: absolute;
+ left: 15px;
+ top: 0;
+ bottom: 0;
+ width: 2px;
+ background: linear-gradient(to bottom, var(--c), #e9ecef);
+}
+
+.timeline-item {
+ position: relative;
+ margin-bottom: 20px;
+}
+
+.timeline-marker {
+ position: absolute;
+ left: -22px;
+ top: 0;
+ width: 30px;
+ height: 30px;
+ border-radius: 50%;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ color: white;
+ font-size: 12px;
+ border: 3px solid var(--bg);
+ box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.timeline-content {
+ background: var(--bg2);
+ border: 1px solid var(--bd2);
+ border-radius: 8px;
+ padding: 14px;
+ box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.timeline-content:hover {
+ box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+ transform: translateY(-1px);
+ transition: all 0.2s ease;
+}
+
+.timeline-content .badge {
+ font-size: 10px;
+}
+
+.timeline-content > div:first-child {
+ margin-bottom: 8px;
+}
+
+.timeline-content > div:first-child small {
+ color: var(--t2);
+ font-size: 11px;
+}
+
+.timeline-content > div:nth-child(2) {
+ font-size: 14px;
+ color: var(--t);
+ margin-bottom: 6px;
+ line-height: 1.5;
+ font-weight: 500;
+}
+
+.timeline-content > small {
+ color: var(--t2);
+ font-size: 11px;
+}
+
+.btn-xs {
+ padding: 4px 10px;
+ font-size: 11px;
+ border-radius: 4px;
+}
+
+.nav-pills .nav-link {
+ font-size: 13px;
+ padding: 8px 14px;
+}
+
+.nav-pills .nav-link.active {
+ background-color: var(--c);
+}
+</style>
 <?php require_once __DIR__.'/../includes/footer.php';
 
 }elseif(in_array($accion,['nuevo','editar'])){
@@ -195,10 +559,93 @@ if($accion==='lista'){
  if($accion==='editar'&&$id){$s=db()->prepare("SELECT * FROM pacientes WHERE id=?");$s->execute([$id]);$pac=$s->fetch()?:$pac;}
  $titulo=$accion==='nuevo'?'Nuevo Paciente':'Editar: '.$pac['nombres'].' '.$pac['apellido_paterno'];
  $pagina_activa='pac';
+ $topbar_act='<a href="'.BASE_URL.'/pages/pacientes.php" class="btn btn-dk btn-sm"><i class="bi bi-arrow-left me-1"></i>Volver a pacientes</a>';
+ 
+ // CSS mejorado para inputs
+ $xhead = '<style>
+ /* Estilos mejorados para inputs del formulario */
+ .form-control, .form-select {
+  transition: all 0.3s ease;
+  background: var(--bg3);
+  color: var(--t);
+  position: relative;
+ }
+ 
+ /* TODOS los inputs tienen borde de color por defecto */
+ .form-control, .form-select {
+  border: 2px solid rgba(0, 212, 238, 0.4);
+  box-shadow: 0 0 0 2px rgba(0, 212, 238, 0.1), 0 0 8px rgba(0, 212, 238, 0.15);
+ }
+ 
+ /* Efecto al hacer focus (MÁS FUERTE Y VISTOSO) */
+ .form-control:focus, .form-select:focus {
+  border-color: var(--c);
+  box-shadow: 0 0 0 6px rgba(0, 212, 238, 0.25), 0 0 30px rgba(0, 212, 238, 0.5), 0 0 50px rgba(0, 212, 238, 0.3);
+  transform: scale(1.05);
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0f9ff 100%);
+  color: #1e293b;
+  outline: none;
+ }
+ 
+ /* Animación de glow MÁS INTENSA */
+ @keyframes inputGlowIntense {
+  0% { 
+   box-shadow: 0 0 0 2px rgba(0, 212, 238, 0.1), 0 0 8px rgba(0, 212, 238, 0.15);
+   transform: scale(1);
+   background: var(--bg3);
+  }
+  50% { 
+   box-shadow: 0 0 0 8px rgba(0, 212, 238, 0.35), 0 0 40px rgba(0, 212, 238, 0.6), 0 0 60px rgba(0, 212, 238, 0.4);
+   transform: scale(1.06);
+   background: linear-gradient(135deg, #f0f9ff 0%, #dbeafe 50%, #f0f9ff 100%);
+  }
+  100% { 
+   box-shadow: 0 0 0 6px rgba(0, 212, 238, 0.25), 0 0 30px rgba(0, 212, 238, 0.5), 0 0 50px rgba(0, 212, 238, 0.3);
+   transform: scale(1.05);
+   background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0f9ff 100%);
+  }
+ }
+ 
+ .form-control:focus, .form-select:focus {
+  animation: inputGlowIntense 0.8s ease-in-out;
+ }
+ 
+ /* Hover effect más sutil */
+ .form-control:hover:not(:focus), .form-select:hover:not(:focus) {
+  border-color: rgba(0, 212, 238, 0.6);
+  box-shadow: 0 0 0 3px rgba(0, 212, 238, 0.15), 0 0 15px rgba(0, 212, 238, 0.25);
+  transform: translateY(-2px);
+ }
+ 
+ /* Labels mejorados */
+ .form-label {
+  font-weight: 600;
+  color: var(--t);
+  margin-bottom: 6px;
+  font-size: 13px;
+ }
+ 
+ /* Textarea específico */
+ textarea.form-control {
+  resize: vertical;
+  min-height: 80px;
+ }
+ 
+ /* Checkboxes mejorados */
+ .form-check-input:checked {
+  background-color: var(--c);
+  border-color: var(--c);
+ }
+ 
+ .form-check-input:focus {
+  box-shadow: 0 0 0 3px rgba(0, 212, 238, 0.25);
+ }
+ </style>';
+ 
  require_once __DIR__.'/../includes/header.php';
 ?>
 <div class="row justify-content-center"><div class="col-12 col-xl-9">
-<form method="POST">
+<form method="POST" enctype="multipart/form-data">
  <input type="hidden" name="accion" value="guardar"><input type="hidden" name="id" value="<?=$pac['id']?>">
  <div class="card mb-4">
   <div class="card-header"><span style="color:var(--t)"><i class="bi bi-search me-1"></i>Búsqueda por documento</span></div>
@@ -229,6 +676,11 @@ if($accion==='lista'){
  <div class="card mb-4">
   <div class="card-header"><span style="color:var(--t)"><i class="bi bi-person-badge me-1"></i>Datos personales</span></div>
   <div class="p-4"><div class="row g-3">
+   <div class="col-12">
+    <label class="form-label">Foto de perfil</label>
+    <input type="file" name="foto_perfil" class="form-control" accept="image/*" onchange="validarTamanoArchivo(this, 1)">
+    <small class="form-text text-muted">Máximo 1MB. Formatos: JPG, PNG, WEBP</small>
+   </div>
    <div class="col-12 col-md-4"><label class="form-label">Nombres / Razón social *</label><input type="text" name="nombres" class="form-control" value="<?=e($pac['nombres'])?>" required></div>
    <div class="col-12 col-md-4"><label class="form-label">Apellido paterno *</label><input type="text" name="apellido_paterno" class="form-control" value="<?=e($pac['apellido_paterno'])?>" required></div>
    <div class="col-12 col-md-4"><label class="form-label">Apellido materno</label><input type="text" name="apellido_materno" class="form-control" value="<?=e($pac['apellido_materno']??'')?>"></div>
@@ -368,6 +820,20 @@ if($accion==='lista'){
 
  btn.addEventListener('click', consultar);
 })();
+
+// Validar tamaño de archivo
+function validarTamanoArchivo(input, maxMB) {
+ if (input.files && input.files[0]) {
+  const file = input.files[0];
+  const maxBytes = maxMB * 1024 * 1024;
+  if (file.size > maxBytes) {
+   alert(`El archivo es muy grande. Máximo permitido: ${maxMB}MB`);
+   input.value = '';
+   return false;
+  }
+ }
+ return true;
+}
 </script>
 <?php require_once __DIR__.'/../includes/footer.php';
 }
