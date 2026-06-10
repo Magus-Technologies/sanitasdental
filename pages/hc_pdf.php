@@ -61,108 +61,123 @@ $cmp_med = getCfg('director_cmp','');
 // ── Generar SVG del odontograma para el PDF ─────────────────
 function buildOdontogramaSVG(array $dientes): string {
     $col_map = [
-        'caries'=>'#E05252','obturado'=>'#00D4EE','ausente'=>'#F5A623',
-        'endodoncia'=>'#8B5CF6','corona'=>'#F59E0B','implante'=>'#10B981',
-        'fractura'=>'#EF4444','presupuesto'=>'#3B82F6','sellante'=>'#EC4899',
-        'protesis'=>'#6366F1','brackets'=>'#06B6D4','sano'=>'none',
+        'caries'     => '#ef4444',
+        'obturado'   => '#3b82f6',
+        'corona'     => '#f59e0b',
+        'ausente'    => '#6b7280',
+        'fractura'   => '#dc2626',
+        'endodoncia' => '#f97316',
+        'implante'   => '#8b5cf6',
+        'protesis'   => '#ec4899',
+        'sellante'   => '#10b981',
+        'movilidad'  => '#a78bfa',
+        'retenido'   => '#67e8f9',
+        'presupuesto'=> '#3b82f6',
+        'brackets'   => '#06b6d4',
+        'sano'       => 'none',
     ];
-    $col_color = ['rojo'=>'#E05252','azul'=>'#00D4EE','negro'=>'#607080','verde'=>'#10B981'];
+    $col_color = ['rojo'=>'#ef4444','azul'=>'#3b82f6','negro'=>'#6b7280','verde'=>'#10b981'];
 
-    $dx = 42; $xc = 420;
+    $TW=38; $TH=46; $GAP=2; $XC=430;
+    $ROW1_Y=38; $ROW2_Y=128;
+
     $sup_der=[18,17,16,15,14,13,12,11]; $sup_izq=[21,22,23,24,25,26,27,28];
-    $inf_der=[48,47,46,45,44,43,42,41]; $inf_izq=[31,32,33,34,35,36,37,38];
-    $tip=['I'=>12,'C'=>13,'PM'=>15,'M'=>18];
-    $tipo=[11=>'I',12=>'I',13=>'C',14=>'PM',15=>'PM',16=>'M',17=>'M',18=>'M',
-           21=>'I',22=>'I',23=>'C',24=>'PM',25=>'PM',26=>'M',27=>'M',28=>'M',
-           31=>'I',32=>'I',33=>'C',34=>'PM',35=>'PM',36=>'M',37=>'M',38=>'M',
-           41=>'I',42=>'I',43=>'C',44=>'PM',45=>'PM',46=>'M',47=>'M',48=>'M'];
+    $inf_izq=[31,32,33,34,35,36,37,38]; $inf_der=[48,47,46,45,44,43,42,41];
 
-    function gx(int $n,int $xc,int $dx): float {
+    function toothX2(int $n,int $xc,int $tw,int $gap): float {
         $sd=[18,17,16,15,14,13,12,11]; $si=[21,22,23,24,25,26,27,28];
         $ii=[31,32,33,34,35,36,37,38]; $id=[48,47,46,45,44,43,42,41];
-        if(in_array($n,$sd)){$i=array_search($n,array_reverse($sd));return $xc-20-$i*$dx;}
-        if(in_array($n,$si)){$i=array_search($n,$si);return $xc+20+$i*$dx;}
-        if(in_array($n,$ii)){$i=array_search($n,$ii);return $xc+20+$i*$dx;}
-        if(in_array($n,$id)){$i=array_search($n,array_reverse($id));return $xc-20-$i*$dx;}
+        $step=$tw+$gap;
+        if(in_array($n,$sd)){$i=array_search($n,array_reverse($sd));return $xc-($tw/2)-($i*$step);}
+        if(in_array($n,$si)){$i=array_search($n,$si);return $xc+($tw/2)+($i*$step)-$tw;}
+        if(in_array($n,$ii)){$i=array_search($n,$ii);return $xc+($tw/2)+($i*$step)-$tw;}
+        if(in_array($n,$id)){$i=array_search($n,array_reverse($id));return $xc-($tw/2)-($i*$step);}
         return $xc;
     }
 
-    $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 200" style="width:100%;max-width:840px">';
-    $svg .= '<rect width="840" height="200" fill="white"/>';
-    // Líneas referencia
-    $svg .= '<line x1="420" y1="5" x2="420" y2="195" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="4,3"/>';
-    $svg .= '<line x1="10" y1="100" x2="830" y2="100" stroke="#EEEEEE" stroke-width="1"/>';
-    // Labels cuadrantes
-    $svg .= '<text x="210" y="12" text-anchor="middle" font-size="7" fill="#888" font-family="Arial">SUPERIOR DERECHO</text>';
-    $svg .= '<text x="630" y="12" text-anchor="middle" font-size="7" fill="#888" font-family="Arial">SUPERIOR IZQUIERDO</text>';
-    $svg .= '<text x="210" y="198" text-anchor="middle" font-size="7" fill="#888" font-family="Arial">INFERIOR DERECHO</text>';
-    $svg .= '<text x="630" y="198" text-anchor="middle" font-size="7" fill="#888" font-family="Arial">INFERIOR IZQUIERDO</text>';
-
-    $todos = array_merge($sup_der,$sup_izq,$inf_izq,$inf_der);
-    foreach ($todos as $num) {
-        $cx = gx($num,$xc,$dx);
-        $t  = $tipo[$num] ?? 'I';
-        $r  = ['I'=>11,'C'=>12,'PM'=>13,'M'=>15][$t] ?? 11;
-        $inf= $num >= 30;
-        $cy_circ = $inf ? 140 : 60;
-        $cy_num  = $inf ? 155 : 46;
-
-        $estados = $dientes[(string)$num] ?? [];
-        $main_c = null; $main_e = null;
-        foreach ($estados as $e) {
-            if (in_array($e['cara'],['total','oclusal'])) {
-                $main_c = $col_color[$e['color']] ?? ($col_map[$e['estado']] ?? null);
-                $main_e = $e['estado']; break;
-            }
-        }
-        if (!$main_c && $estados) {
-            $main_c = $col_color[$estados[0]['color']] ?? ($col_map[$estados[0]['estado']] ?? null);
-            $main_e = $estados[0]['estado'];
-        }
-
-        $cs = $main_c && $main_c !== 'none' ? $main_c : '#9BB0BC';
-        $sw = $main_c && $main_c !== 'none' ? '2' : '1';
-        $cf = $main_c && $main_c !== 'none' ? $main_c.'22' : '#F0F4F7';
-
-        if ($main_e === 'ausente') {
-            $svg .= "<rect x='".($cx-$r)."' y='".($cy_circ-$r)."' width='".($r*2)."' height='".($r*2)."' rx='3' fill='#FFF8E7' stroke='#F5A623' stroke-width='1.5' stroke-dasharray='3,2'/>";
-            $svg .= "<line x1='".($cx-7)."' y1='".($cy_circ-7)."' x2='".($cx+7)."' y2='".($cy_circ+7)."' stroke='#F5A623' stroke-width='1.5'/>";
-            $svg .= "<line x1='".($cx+7)."' y1='".($cy_circ-7)."' x2='".($cx-7)."' y2='".($cy_circ+7)."' stroke='#F5A623' stroke-width='1.5'/>";
-        } else {
-            // Círculo FDI
-            $svg .= "<circle cx='$cx' cy='$cy_circ' r='$r' fill='$cf' stroke='$cs' stroke-width='$sw'/>";
-            // Líneas de división
-            $svg .= "<line x1='$cx' y1='".($cy_circ-$r)."' x2='$cx' y2='".($cy_circ+$r)."' stroke='#CCCCCC' stroke-width='0.6'/>";
-            $svg .= "<line x1='".($cx-$r)."' y1='$cy_circ' x2='".($cx+$r)."' y2='$cy_circ' stroke='#CCCCCC' stroke-width='0.6'/>";
-            $svg .= "<circle cx='$cx' cy='$cy_circ' r='".round($r*0.4)."' fill='none' stroke='#CCCCCC' stroke-width='0.6'/>";
-            // Caras marcadas
-            foreach ($estados as $e) {
-                if ($e['estado'] === 'sano') continue;
-                $c = $col_color[$e['color']] ?? ($col_map[$e['estado']] ?? '#E05252');
-                $p2 = $r - 1;
-                if ($e['cara'] === 'total') {
-                    $svg .= "<circle cx='$cx' cy='$cy_circ' r='".($r-1)."' fill='$c' opacity='0.7'/>";
-                } elseif ($e['cara'] === 'oclusal') {
-                    $svg .= "<circle cx='$cx' cy='$cy_circ' r='".round($r*0.4)."' fill='$c' opacity='0.85'/>";
-                } elseif ($e['cara'] === 'vestibular') {
-                    $svg .= "<path d='M ".($cx-$p2).",".($cy_circ-$p2)." L ".($cx+$p2).",".($cy_circ-$p2)." L $cx,".($cy_circ-1)." Z' fill='$c' opacity='0.8'/>";
-                } elseif ($e['cara'] === 'lingual') {
-                    $svg .= "<path d='M ".($cx-$p2).",".($cy_circ+$p2)." L ".($cx+$p2).",".($cy_circ+$p2)." L $cx,".($cy_circ+1)." Z' fill='$c' opacity='0.8'/>";
-                } elseif ($e['cara'] === 'mesial') {
-                    $svg .= "<path d='M ".($cx-$p2).",".($cy_circ-$p2)." L ".($cx-$p2).",".($cy_circ+$p2)." L ".($cx-1).",$cy_circ Z' fill='$c' opacity='0.8'/>";
-                } elseif ($e['cara'] === 'distal') {
-                    $svg .= "<path d='M ".($cx+$p2).",".($cy_circ-$p2)." L ".($cx+$p2).",".($cy_circ+$p2)." L ".($cx+1).",$cy_circ Z' fill='$c' opacity='0.8'/>";
-                }
-            }
-            // Símbolo endodoncia
-            if ($main_e === 'endodoncia') {
-                $svg .= "<line x1='$cx' y1='".($cy_circ-$r+2)."' x2='$cx' y2='".($cy_circ+$r-2)."' stroke='#8B5CF6' stroke-width='2' stroke-linecap='round'/>";
-            }
-        }
-        // Número FDI
-        $svg .= "<text x='$cx' y='$cy_num' text-anchor='middle' font-size='7' fill='#4A7080' font-family='Arial' font-weight='600'>$num</text>";
+    function faceC(string $cara,array $estados,array $cm,array $cc): string {
+        $e=$estados[$cara]??($estados['total']??null);
+        if(!$e||$e['estado']==='sano') return 'none';
+        return $cc[$e['color']]??($cm[$e['estado']]??'#E05252');
     }
-    $svg .= '</svg>';
+
+    function drawTooth2(int $num,float $x,float $y,int $tw,int $th,array $raw_estados,array $cm,array $cc): string {
+        $s='';
+        $es=[];
+        foreach($raw_estados as $e) $es[$e['cara']]=$e;
+        $bv=7; $bs=6;
+        $x2=$x+$tw; $y2=$y+$th; $cx=$x+$tw/2; $cy=$y+$th/2;
+
+        $main=$es['total']??$es['O']??($es?array_values($es)[0]:null);
+
+        if($main&&$main['estado']==='ausente'){
+            $s.="<rect x='".($x+0.5)."' y='".($y+0.5)."' width='".($tw-1)."' height='".($th-1)."' rx='2' fill='#1A2535' stroke='#3A4A5A' stroke-width='0.8'/>";
+            $s.="<line x1='".($x+5)."' y1='".($y+5)."' x2='".($x2-5)."' y2='".($y2-5)."' stroke='#506070' stroke-width='1.5'/>";
+            $s.="<line x1='".($x2-5)."' y1='".($y+5)."' x2='".($x+5)."' y2='".($y2-5)."' stroke='#506070' stroke-width='1.5'/>";
+            return $s;
+        }
+
+        $s.="<rect x='$x' y='$y' width='$tw' height='$th' rx='2' fill='#1A2535' stroke='#334155' stroke-width='0.8'/>";
+
+        // V - vestibular top
+        $vc=faceC('V',$es,$cm,$cc);
+        if($vc!=='none') $s.="<polygon points='".($x+1).",".($y+1)." ".($x2-1).",".($y+1)." ".($x2-$bv).",".($y+$bv)." ".($x+$bv).",".($y+$bv)."' fill='$vc' stroke='#334155' stroke-width='0.5'/>";
+        // P - palatino bottom
+        $pc=faceC('P',$es,$cm,$cc);
+        if($pc!=='none') $s.="<polygon points='".($x+$bv).",".($y2-$bv)." ".($x2-$bv).",".($y2-$bv)." ".($x2-1).",".($y2-1)." ".($x+1).",".($y2-1)."' fill='$pc' stroke='#334155' stroke-width='0.5'/>";
+        // M - mesial left
+        $mc=faceC('M',$es,$cm,$cc);
+        if($mc!=='none') $s.="<polygon points='".($x+1).",".($y+1)." ".($x+$bs).",".($y+$bv)." ".($x+$bs).",".($y2-$bv)." ".($x+1).",".($y2-1)."' fill='$mc' stroke='#334155' stroke-width='0.5'/>";
+        // D - distal right
+        $dc=faceC('D',$es,$cm,$cc);
+        if($dc!=='none') $s.="<polygon points='".($x2-1).",".($y+1)." ".($x2-$bs).",".($y+$bv)." ".($x2-$bs).",".($y2-$bv)." ".($x2-1).",".($y2-1)."' fill='$dc' stroke='#334155' stroke-width='0.5'/>";
+        // O - oclusal center
+        $oc=faceC('O',$es,$cm,$cc);
+        if($oc!=='none') $s.="<rect x='".($x+$bs)."' y='".($y+$bv)."' width='".($tw-$bs*2)."' height='".($th-$bv*2)."' fill='$oc' stroke='#334155' stroke-width='0.5'/>";
+
+        // Outer border
+        $s.="<rect x='$x' y='$y' width='$tw' height='$th' rx='2' fill='none' stroke='#475569' stroke-width='0.8'/>";
+
+        // Endodoncia line
+        if($main&&$main['estado']==='endodoncia')
+            $s.="<line x1='$cx' y1='".($y+3)."' x2='$cx' y2='".($y2-3)."' stroke='#8B5CF6' stroke-width='2' stroke-linecap='round'/>";
+        // Implante I
+        if($main&&$main['estado']==='implante')
+            $s.="<text x='$cx' y='".($cy+4)."' text-anchor='middle' font-size='13' font-weight='900' fill='#8B5CF6' font-family='Arial'>I</text>";
+        return $s;
+    }
+
+    $W=860; $H=230;
+    $svg="<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 $W $H' style='width:100%;max-width:860px;background:#111A26;border-radius:6px;display:block'>";
+    $svg.="<rect width='$W' height='$H' fill='#111A26' rx='6'/>";
+    // Center line
+    $midY=$ROW2_Y-10;
+    $svg.="<line x1='$XC' y1='15' x2='$XC' y2='".($H-15)."' stroke='rgba(100,130,160,0.3)' stroke-width='1' stroke-dasharray='4,3'/>";
+    $svg.="<line x1='25' y1='$midY' x2='".($W-25)."' y2='$midY' stroke='rgba(100,130,160,0.15)' stroke-width='1'/>";
+    $svg.="<text x='$XC' y='".($midY-3)."' text-anchor='middle' font-size='7' fill='#4A6070' font-family='Arial' letter-spacing='1'>Línea media</text>";
+    $svg.="<text x='215' y='30' text-anchor='middle' font-size='7.5' fill='#4A6070' font-family='Arial' letter-spacing='2'>MAXILAR SUPERIOR</text>";
+    $svg.="<text x='215' y='".($H-5)."' text-anchor='middle' font-size='7.5' fill='#4A6070' font-family='Arial' letter-spacing='2'>MANDÍBULA</text>";
+
+    foreach(array_merge($sup_der,$sup_izq,$inf_der,$inf_izq) as $num){
+        $x=toothX2($num,$XC,$TW,$GAP);
+        $y=($num<30)?$ROW1_Y:$ROW2_Y;
+        $es=$dientes[(string)$num]??[];
+        $svg.=drawTooth2($num,$x,$y,$TW,$TH,$es,$col_map,$col_color);
+        $ny=($num<30)?($ROW1_Y-5):($ROW2_Y+$TH+9);
+        $ncx=$x+$TW/2;
+        $svg.="<text x='$ncx' y='$ny' text-anchor='middle' font-size='7' fill='#5A7080' font-family='Arial' font-weight='600'>$num</text>";
+    }
+
+    // Legend
+    $leg=['caries'=>'#E05252','obturado'=>'#5BA8F5','ausente'=>'#607080','endodoncia'=>'#F5A623','corona'=>'#F5A623','implante'=>'#8B5CF6','fractura'=>'#E05252','protesis'=>'#EC4899'];
+    $lx=20; $ly=$H-6;
+    foreach($leg as $lbl=>$lc){
+        $svg.="<rect x='$lx' y='".($ly-8)."' width='8' height='8' rx='1.5' fill='$lc'/>";
+        $lx+=11;
+        $svg.="<text x='$lx' y='$ly' font-size='6.5' fill='#7090A0' font-family='Arial'>$lbl</text>";
+        $lx+=(int)(strlen($lbl)*3.8)+8;
+    }
+    $svg.='</svg>';
     return $svg;
 }
 

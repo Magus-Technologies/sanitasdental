@@ -58,6 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'activo'      => $activo,
         ];
 
+        // Firma digital del doctor
+        if ((int)$rol_id === 2 && !empty($_FILES['firma_imagen']['name']) && $_FILES['firma_imagen']['error'] === UPLOAD_ERR_OK) {
+            $firma = subirArchivo($_FILES['firma_imagen'], 'firmas', ['jpg','jpeg','png','webp']);
+            if ($firma) $datos['firma_imagen'] = $firma;
+        }
+
         try {
             if ($editId) {
                 // EDITAR
@@ -70,7 +76,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $vals[] = $editId;
                 db()->prepare("UPDATE usuarios SET $sets, updated_at=NOW() WHERE id=?")->execute($vals);
                 auditar('EDITAR_USUARIO', 'usuarios', $editId);
-                $savedId = $editId;
                 flash('ok', 'Usuario actualizado correctamente.');
             } else {
                 // CREAR
@@ -78,34 +83,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $cols = implode(',', array_keys($datos));
                 $phs  = implode(',', array_fill(0, count($datos), '?'));
                 db()->prepare("INSERT INTO usuarios ($cols) VALUES ($phs)")->execute(array_values($datos));
-                $savedId = (int)db()->lastInsertId();
-                auditar('CREAR_USUARIO', 'usuarios', $savedId);
+                $newId = (int)db()->lastInsertId();
+                auditar('CREAR_USUARIO', 'usuarios', $newId);
                 flash('ok', 'Usuario creado correctamente.');
             }
-
-            // ── Firma del doctor (imagen) ─────────────────────────
-            // Recupera la firma actual para poder borrarla si se reemplaza/quita.
-            $firmaActual = db()->query("SELECT firma_imagen FROM usuarios WHERE id=$savedId")->fetchColumn() ?: '';
-
-            // Quitar firma marcada por el usuario
-            if (!empty($_POST['quitar_firma'])) {
-                if ($firmaActual && file_exists(UPLOAD_PATH.$firmaActual)) @unlink(UPLOAD_PATH.$firmaActual);
-                db()->prepare("UPDATE usuarios SET firma_imagen=NULL WHERE id=?")->execute([$savedId]);
-                $firmaActual = '';
-            }
-
-            // Subir nueva firma (PNG/JPG/WEBP). Recomendado: PNG con fondo transparente.
-            if (!empty($_FILES['firma']['name']) && ($_FILES['firma']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
-                $rel = subirArchivo($_FILES['firma'], 'firmas', ['png','jpg','jpeg','webp']);
-                if ($rel) {
-                    if ($firmaActual && $firmaActual !== $rel && file_exists(UPLOAD_PATH.$firmaActual)) @unlink(UPLOAD_PATH.$firmaActual);
-                    db()->prepare("UPDATE usuarios SET firma_imagen=? WHERE id=?")->execute([$rel, $savedId]);
-                } else {
-                    flash('error', 'Usuario guardado, pero la firma no se pudo subir. Use PNG, JPG o WEBP (máx 20MB).');
-                    go('pages/admin/usuarios.php?accion=editar&id='.$savedId);
-                }
-            }
-
             go('pages/admin/usuarios.php');
         } catch (\PDOException $e) {
             flash('error', 'Error al guardar: ' . $e->getMessage());
@@ -359,22 +340,6 @@ if ($accion === 'lista') {
             </div>
         </div>
 
-        <!-- Firma del profesional -->
-        <div class="card mb-4">
-            <div class="card-header"><span style="color:var(--t)"><i class="bi bi-pen me-1"></i>Firma</span></div>
-            <div class="p-4 text-center">
-                <?php if (!empty($usr['firma_imagen'])): ?>
-                    <div style="background:#fff;border:1px solid var(--bd2);border-radius:8px;padding:8px;display:inline-block">
-                        <img src="<?=BASE_URL?>/uploads/<?=e($usr['firma_imagen'])?>" alt="Firma" style="max-height:80px;max-width:100%">
-                    </div>
-                <?php else: ?>
-                    <div style="color:var(--t2);font-size:13px"><i class="bi bi-pen me-1"></i>Sin firma cargada.
-                        <a href="?accion=editar&id=<?= $id ?>" style="color:var(--c)">Agregar firma</a>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
         <!-- Reset password rápido -->
         <div class="card mb-4">
             <div class="card-header"><span style="color:var(--t)"><i class="bi bi-key me-1"></i>Cambiar contraseña</span></div>
@@ -445,7 +410,7 @@ if ($accion === 'lista') {
 // FORMULARIO CREAR / EDITAR
 // ══════════════════════════════════════════════════════════════
 } elseif (in_array($accion, ['nuevo','editar'])) {
-    $usr = ['id'=>0,'rol_id'=>3,'nombre'=>'','apellidos'=>'','dni'=>'','email'=>'','telefono'=>'','especialidad'=>'','cmp'=>'','activo'=>1,'firma_imagen'=>null];
+    $usr = ['id'=>0,'rol_id'=>3,'nombre'=>'','apellidos'=>'','dni'=>'','email'=>'','telefono'=>'','especialidad'=>'','cmp'=>'','activo'=>1];
     if ($accion === 'editar' && $id) {
         $s = db()->prepare("SELECT * FROM usuarios WHERE id=?");
         $s->execute([$id]); $usr = $s->fetch() ?: $usr;
@@ -467,7 +432,7 @@ if ($accion === 'lista') {
 ?>
 <div class="row justify-content-center">
 <div class="col-12 col-xl-9">
-<form method="POST" id="fUsuario" enctype="multipart/form-data" novalidate>
+<form method="POST" id="fUsuario" novalidate enctype="multipart/form-data">
     <input type="hidden" name="accion" value="guardar">
     <input type="hidden" name="id" value="<?= $usr['id'] ?>">
 
@@ -557,38 +522,6 @@ if ($accion === 'lista') {
                     </div>
                 </div>
             </div>
-
-            <!-- Firma del doctor -->
-            <div class="card mb-4">
-                <div class="card-header"><span style="color:var(--t)"><i class="bi bi-pen me-2"></i>Firma del profesional <small style="color:var(--t2);font-weight:400;text-transform:none">(se adjunta en la ficha endodóntica y otros documentos)</small></span></div>
-                <div class="p-4">
-                    <div class="row g-3 align-items-center">
-                        <div class="col-12 col-md-5 text-center">
-                            <div id="firmaPreviewWrap" style="background:#fff;border:1px dashed var(--bd2);border-radius:8px;min-height:90px;display:flex;align-items:center;justify-content:center;padding:8px">
-                                <?php if (!empty($usr['firma_imagen'])): ?>
-                                    <img id="firmaPreview" src="<?=BASE_URL?>/uploads/<?=e($usr['firma_imagen'])?>" alt="Firma" style="max-height:80px;max-width:100%">
-                                <?php else: ?>
-                                    <span id="firmaVacia" style="color:#888;font-size:12px"><i class="bi bi-pen me-1"></i>Sin firma cargada</span>
-                                    <img id="firmaPreview" src="" alt="Firma" style="display:none;max-height:80px;max-width:100%">
-                                <?php endif; ?>
-                            </div>
-                            <?php if (!empty($usr['firma_imagen'])): ?>
-                            <div class="form-check mt-2 d-inline-block">
-                                <input class="form-check-input" type="checkbox" name="quitar_firma" id="quitarFirma" value="1">
-                                <label class="form-check-label" for="quitarFirma" style="color:var(--t2);font-size:12px">Quitar firma actual</label>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-                        <div class="col-12 col-md-7">
-                            <label class="form-label">Subir imagen de firma</label>
-                            <input type="file" name="firma" id="firmaFile" class="form-control" accept="image/png,image/jpeg,image/webp">
-                            <div class="p-3 rounded mt-3" style="background:rgba(0,212,238,.06);border:1px solid rgba(0,212,238,.15);font-size:12px;color:var(--t2)">
-                                💡 <strong style="color:var(--c)">Recomendado:</strong> imagen <strong>PNG con fondo transparente</strong>, firma en trazo oscuro, aprox. 600×200 px. Formatos: PNG, JPG, WEBP (máx 20 MB).
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- Columna: selección de rol -->
@@ -615,9 +548,27 @@ if ($accion === 'lista') {
                     <?php endforeach; ?>
 
                     <!-- Panel condicional para doctor -->
-                    <div id="panelDoctor" style="display:<?= $usr['rol_id']==2 ? 'block':'none' ?>;margin-top:12px;padding:12px;background:rgba(0,212,238,.06);border:1px solid rgba(0,212,238,.2);border-radius:8px;font-size:12px;color:var(--t2)">
-                        <i class="bi bi-info-circle me-1" style="color:var(--c)"></i>
-                        Para doctores completa <strong style="color:var(--t)">Especialidad</strong> y <strong style="color:var(--t)">CMP</strong> en los datos personales.
+                    <div id="panelDoctor" style="display:<?= $usr['rol_id']==2 ? 'block':'none' ?>;margin-top:12px">
+                      <div style="padding:14px;background:rgba(0,212,238,.06);border:1px solid rgba(0,212,238,.2);border-radius:8px">
+                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--c);margin-bottom:12px"><i class="bi bi-person-badge me-1"></i>Datos del Doctor</div>
+                        <div class="row g-3">
+                          <div class="col-12 col-md-6">
+                            <label class="form-label">CMP (Número de colegiatura)</label>
+                            <input type="text" name="cmp" class="form-control" value="<?= e($usr['cmp']??'')?>" placeholder="Ej: CMP-12345">
+                          </div>
+                          <div class="col-12 col-md-6">
+                            <label class="form-label">Firma digital (imagen PNG/JPG)</label>
+                            <?php if(!empty($usr['firma_imagen'])): ?>
+                            <div class="mb-2">
+                              <img src="<?=BASE_URL?>/uploads/<?=e($usr['firma_imagen'])?>" style="max-height:55px;background:#fff;padding:4px;border-radius:4px;border:1px solid var(--bd2)">
+                              <small style="display:block;color:var(--t2);font-size:10px;margin-top:2px">Firma actual &mdash; sube una nueva para reemplazar</small>
+                            </div>
+                            <?php endif; ?>
+                            <input type="file" name="firma_imagen" class="form-control" accept="image/*">
+                            <small style="color:var(--t2);font-size:10px">PNG transparente o JPG fondo blanco. Máx 5MB.</small>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                 </div>
             </div>
@@ -692,23 +643,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const checked = document.querySelector('input[name="rol_id"]:checked');
     if (checked) seleccionarRol(parseInt(checked.value));
 });
-
-// Previsualización de la firma al seleccionar archivo
-(function(){
-    const inp = document.getElementById('firmaFile');
-    if (!inp) return;
-    inp.addEventListener('change', () => {
-        const f = inp.files && inp.files[0];
-        const img = document.getElementById('firmaPreview');
-        const vacia = document.getElementById('firmaVacia');
-        const quitar = document.getElementById('quitarFirma');
-        if (!f || !img) return;
-        const url = URL.createObjectURL(f);
-        img.src = url; img.style.display = 'block';
-        if (vacia) vacia.style.display = 'none';
-        if (quitar) { quitar.checked = false; }
-    });
-})();
 
 // Buscador DNI con RENIEC (autocompleta nombres y apellidos)
 (function(){

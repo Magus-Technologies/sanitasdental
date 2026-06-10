@@ -38,28 +38,17 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   if($rid){ db()->prepare("UPDATE pacientes SET activo=1,deleted_at=NULL,deleted_by=NULL,updated_at=NOW() WHERE id=?")->execute([$rid]); auditar('RESTAURAR_PAC','pacientes',$rid); flash('ok','Paciente restaurado correctamente.'); }
   go('pages/pacientes.php');
  }
- if($ap==='portal_token'){
-  $tid=(int)($_POST['id']??0);
-  if($tid){
-   $tok=bin2hex(random_bytes(20)); // 40 hex
-   db()->prepare("UPDATE pacientes SET portal_token=?,portal_token_at=NOW() WHERE id=?")->execute([$tok,$tid]);
-   auditar('PORTAL_TOKEN','pacientes',$tid);
-   flash('ok','Enlace del portal generado.');
-  }
-  go("pages/pacientes.php?accion=ver&id=$tid");
- }
 }
 
 if($accion==='lista'){
  $titulo='Pacientes'; $pagina_activa='pac';
  $q=trim($_GET['q']??''); $pg=max(1,(int)($_GET['p']??1)); $pp=20;
- $orden=(($_GET['orden']??'asc')==='desc')?'desc':'asc';
  $mostrar_inactivos=isset($_GET['inactivos']);
  $w=$mostrar_inactivos?'WHERE activo=0':'WHERE activo=1'; $pm=[];
  if($q){$w.=' AND(nombres LIKE ? OR apellido_paterno LIKE ? OR dni LIKE ? OR telefono LIKE ? OR codigo LIKE ?)';$b="%$q%";$pm=[$b,$b,$b,$b,$b];}
  $st=db()->prepare("SELECT COUNT(*) FROM pacientes $w"); $st->execute($pm); $tot=(int)$st->fetchColumn();
  $pages=max(1,ceil($tot/$pp)); $pg=min($pg,$pages); $off=($pg-1)*$pp;
- $st2=db()->prepare("SELECT * FROM pacientes $w ORDER BY CAST(REGEXP_REPLACE(codigo,'[^0-9]','') AS UNSIGNED) $orden, id $orden LIMIT $pp OFFSET $off");
+ $st2=db()->prepare("SELECT * FROM pacientes $w ORDER BY apellido_paterno LIMIT $pp OFFSET $off");
  $st2->execute($pm); $lista=$st2->fetchAll();
  $topbar_act='<a href="?accion=nuevo" class="btn btn-primary"><i class="bi bi-person-plus me-1"></i>Nuevo paciente</a>';
  require_once __DIR__.'/../includes/header.php';
@@ -68,21 +57,16 @@ if($accion==='lista'){
  <form method="GET" class="d-flex gap-2 flex-wrap align-items-end row-gap-2">
   <div class="flex-fill" style="min-width:180px"><label class="form-label">Buscar</label>
   <input type="text" name="q" class="form-control" placeholder="Nombre, DNI, código, teléfono..." value="<?=e($q)?>"></div>
-  <input type="hidden" name="orden" value="<?=e($orden)?>">
   <div class="d-flex gap-2 align-items-end pt-1">
    <button type="submit" class="btn btn-dk">🔍</button>
-   <?php if($q): ?><a href="?orden=<?=e($orden)?>" class="btn btn-dk">✕</a><?php endif; ?>
-   <?php $flip=$orden==='asc'?'desc':'asc'; $qsOrden=http_build_query(array_filter(['q'=>$q,'inactivos'=>$mostrar_inactivos?1:null,'orden'=>$flip], fn($v)=>$v!==null&&$v!=='')); ?>
-   <a href="?<?=$qsOrden?>" class="btn btn-dk btn-sm" title="Cambiar orden por código">
-     <i class="bi bi-sort-numeric-<?=$orden==='asc'?'down':'up-alt'?> me-1"></i><?=$orden==='asc'?'Código: 1 → último':'Código: último → 1'?>
-   </a>
+   <?php if($q): ?><a href="?" class="btn btn-dk">✕</a><?php endif; ?>
   </div>
   <small class="ms-auto mt-2" style="color:var(--t2)"><?=$tot?> paciente<?=$tot!=1?'s':''?></small>
   <div class="ms-2 mt-2">
   <?php if(!$mostrar_inactivos): ?>
-   <a href="?<?=http_build_query(array_filter(['q'=>$q,'orden'=>$orden,'inactivos'=>1], fn($v)=>$v!==null&&$v!==''))?>" class="btn btn-dk btn-sm" style="font-size:10px" title="Ver desactivados"><i class="bi bi-person-dash me-1"></i>Ver desactivados</a>
+   <a href="?inactivos=1" class="btn btn-dk btn-sm" style="font-size:10px" title="Ver desactivados"><i class="bi bi-person-dash me-1"></i>Ver desactivados</a>
   <?php else: ?>
-   <a href="?<?=http_build_query(array_filter(['q'=>$q,'orden'=>$orden], fn($v)=>$v!==null&&$v!==''))?>" class="btn btn-primary btn-sm" style="font-size:10px"><i class="bi bi-person-check me-1"></i>Ver activos</a>
+   <a href="?" class="btn btn-primary btn-sm" style="font-size:10px"><i class="bi bi-person-check me-1"></i>Ver activos</a>
   <?php endif; ?>
   </div>
  </form>
@@ -144,7 +128,7 @@ if($accion==='lista'){
 <?php if($pages>1): ?>
 <nav class="mt-3 d-flex justify-content-end"><ul class="pagination pagination-sm">
  <?php for($i=1;$i<=$pages;$i++): ?>
- <li class="page-item <?=$i===$pg?'active':''?>"><a class="page-link" href="?<?=http_build_query(array_filter(['q'=>$q,'orden'=>$orden,'inactivos'=>$mostrar_inactivos?1:null,'p'=>$i], fn($v)=>$v!==null&&$v!==''))?>"><?=$i?></a></li>
+ <li class="page-item <?=$i===$pg?'active':''?>"><a class="page-link" href="?q=<?=urlencode($q)?>&p=<?=$i?>"><?=$i?></a></li>
  <?php endfor; ?>
 </ul></nav>
 <?php endif;
@@ -398,38 +382,6 @@ if($accion==='lista'){
       <div style="margin-top:4px;color:var(--t)"><?=e(substr($ultima_hc['motivo_consulta'],0,60))?><?=strlen($ultima_hc['motivo_consulta'])>60?'...':''?></div>
      </div>
     </div>
-    <?php endif; ?>
-   </div>
-  </div>
- </div>
-
- <!-- Portal del paciente (fila completa) -->
- <div class="col-12">
-  <?php // ── Portal del paciente ──
-    $portalUrl = !empty($pac['portal_token']) ? rtrim((isset($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off'?'https':'http').'://'.$_SERVER['HTTP_HOST'].BASE_URL,'/').'/portal.php?t='.$pac['portal_token'] : '';
-    $nomCli = empresa('nombre_comercial') ?: getCfg('clinica_nombre','la clínica');
-  ?>
-  <div class="card mt-3" style="border:1px solid rgba(0,212,238,.25)">
-   <div class="card-header d-flex align-items-center justify-content-between">
-    <span style="font-weight:600"><i class="bi bi-phone me-1" style="color:var(--c)"></i>Portal del paciente</span>
-    <form method="POST" onsubmit="return confirm('<?=!empty($pac['portal_token'])?'Generar un NUEVO enlace invalidará el anterior. ¿Continuar?':'¿Generar enlace de acceso para este paciente?'?>')">
-     <input type="hidden" name="accion" value="portal_token"><input type="hidden" name="id" value="<?=$id?>">
-     <button class="btn btn-dk btn-sm"><i class="bi bi-<?=!empty($pac['portal_token'])?'arrow-repeat':'link-45deg'?> me-1"></i><?=!empty($pac['portal_token'])?'Regenerar':'Generar enlace'?></button>
-    </form>
-   </div>
-   <div class="p-3">
-    <?php if($portalUrl): ?>
-     <p style="color:var(--t2);font-size:12px;margin-bottom:8px">Comparte este enlace para que el paciente vea sus citas, recetas, presupuestos, pagos y la evolución de su tratamiento.</p>
-     <div class="d-flex gap-2 flex-wrap align-items-center">
-      <input type="text" id="portalUrl" class="form-control form-control-sm" style="flex:1;min-width:220px" value="<?=e($portalUrl)?>" readonly onclick="this.select()">
-      <button type="button" class="btn btn-primary btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('portalUrl').value);this.innerHTML='<i class=\'bi bi-check2\'></i> Copiado'"><i class="bi bi-clipboard me-1"></i>Copiar</button>
-      <?php $waTxt=rawurlencode("Hola ".$pac['nombres'].", este es tu acceso al portal de ".$nomCli.":\n".$portalUrl); $waTel=preg_replace('/[^0-9]/','',$pac['telefono']??''); ?>
-      <a class="btn btn-sm" style="background:#25D366;color:#fff" target="_blank" href="https://wa.me/<?=$waTel?>?text=<?=$waTxt?>"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
-      <a class="btn btn-dk btn-sm" target="_blank" href="<?=e($portalUrl)?>"><i class="bi bi-box-arrow-up-right me-1"></i>Abrir</a>
-     </div>
-     <?php if(!empty($pac['portal_token_at'])): ?><div style="color:var(--t3);font-size:11px;margin-top:8px">Enlace generado: <?=fDate($pac['portal_token_at'])?></div><?php endif; ?>
-    <?php else: ?>
-     <p style="color:var(--t2);font-size:13px;margin:0">Este paciente aún no tiene acceso al portal. Genera un enlace para compartirlo.</p>
     <?php endif; ?>
    </div>
   </div>

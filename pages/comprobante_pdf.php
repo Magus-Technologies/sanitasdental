@@ -519,7 +519,7 @@ if ($fmt === 'ticket') {
     <tr><td class="lbl">OP. GRAVADAS: <?=e($emp_mon)?></td><td class="val"><?=number_format($totalGrav,2)?></td></tr>
     <tr><td class="lbl">IGV (18%): <?=e($emp_mon)?></td><td class="val"><?=number_format($igvCalc,2)?></td></tr>
     <?php else: ?>
-    <tr><td class="lbl">OP. INAFECTA / EXONERADA: <?=e($emp_mon)?></td><td class="val"><?=number_format($totalGrav,2)?></td></tr>
+    <tr><td class="lbl">EXONERADA: <?=e($emp_mon)?></td><td class="val"><?=number_format($totalGrav,2)?></td></tr>
     <tr><td class="lbl">IGV: <?=e($emp_mon)?></td><td class="val">0.00</td></tr>
     <?php endif; ?>
     <?php if((float)$pago['descuento']>0): ?>

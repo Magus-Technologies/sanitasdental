@@ -9,7 +9,7 @@ requiereLogin();
 
 $hc_id  = (int)($_GET['hc_id']  ?? 0);
 $pac_id = (int)($_GET['paciente_id'] ?? 0);
-if (!$hc_id || !$pac_id) { flash('error','Parámetros inválidos'); go('pages/historia_clinica.php'); }
+if (!$hc_id || !$pac_id) { go('pages/historia_clinica.php'); }
 
 // ── HC y paciente ───────────────────────────────────────────────────
 $st = db()->prepare("SELECT hc.*, CONCAT(p.nombres,' ',p.apellido_paterno) AS pac_nm,

@@ -2,36 +2,19 @@
 require_once __DIR__.'/includes/config.php';
 sesion(); if(estaLogueado()) go('index.php');
 $err='';
-// Rate limit: max 5 attempts per 10 min
-if(!isset($_SESSION['login_attempts'])) $_SESSION['login_attempts']=0;
-if(!isset($_SESSION['login_locked_until'])) $_SESSION['login_locked_until']=0;
-if($_SESSION['login_locked_until']>time()){
- $wait=ceil(($_SESSION['login_locked_until']-time())/60);
- $err='Demasiados intentos. Espera '.$wait.' minuto(s).';
-}
 if($_SERVER['REQUEST_METHOD']==='POST'){
  $em=trim($_POST['email']??''); $pw=$_POST['password']??'';
  if($em&&$pw){
   $s=db()->prepare("SELECT u.*,r.nombre as rol FROM usuarios u JOIN roles r ON u.rol_id=r.id WHERE u.email=? AND u.activo=1");
   $s->execute([$em]); $u=$s->fetch();
   if($u&&password_verify($pw,$u['password'])){
-   session_regenerate_id(true); // prevent session fixation
-   $_SESSION['login_attempts']=0; $_SESSION['login_locked_until']=0;
    $_SESSION['uid']=$u['id'];
    $_SESSION['usr']=['id'=>$u['id'],'nombre'=>$u['nombre'].' '.$u['apellidos'],'email'=>$u['email']];
    $_SESSION['rol']=$u['rol'];
-   $_SESSION['rol_id']=(int)$u['rol_id'];
    db()->prepare("UPDATE usuarios SET ultimo_acceso=NOW() WHERE id=?")->execute([$u['id']]);
    auditar('LOGIN','usuarios',$u['id']);
    go('index.php');
-  } else {
-   $_SESSION['login_attempts']++;
-   if($_SESSION['login_attempts']>=5){
-    $_SESSION['login_locked_until']=time()+600; // 10 min
-    $_SESSION['login_attempts']=0;
-    $err='Cuenta bloqueada por 10 minutos por múltiples intentos.';
-   } else $err='Credenciales incorrectas. Intento '.$_SESSION['login_attempts'].'/5.';
-  }
+  } else $err='Credenciales incorrectas.';
  } else $err='Completa todos los campos.';
 }
 ?><!DOCTYPE html><html lang="es"><head>

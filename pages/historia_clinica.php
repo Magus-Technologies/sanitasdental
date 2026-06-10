@@ -43,6 +43,20 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   }
   header('Location:'.BASE_URL.'/pages/historia_clinica.php?id='.$hcId.'#adjuntos'); exit;
  }
+ if($ap==='eliminar_adjunto'){
+  $hcId=(int)($_POST['hc_id']??0); $aid=(int)($_POST['adjunto_id']??0);
+  if($aid){
+   $a=db()->prepare("SELECT ruta FROM adjuntos WHERE id=? AND hc_id=?"); $a->execute([$aid,$hcId]); $rutaArch=$a->fetchColumn();
+   if($rutaArch!==false){
+    db()->prepare("DELETE FROM adjuntos WHERE id=?")->execute([$aid]);
+    $fp=__DIR__.'/../uploads/'.$rutaArch;
+    if($rutaArch && is_file($fp)) @unlink($fp); // elimina el archivo físico
+    auditar('ELIMINAR_ADJUNTO','adjuntos',$aid);
+    flash('ok','Archivo eliminado.');
+   }
+  }
+  header('Location:'.BASE_URL.'/pages/historia_clinica.php?id='.$hcId.'#adjuntos'); exit;
+ }
  if($ap==='eliminar_plan'){
   $planId = (int)$_POST['plan_id'];
   $hcId   = (int)$_POST['hc_id'];
@@ -53,23 +67,74 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   flash('ok','Plan de tratamiento eliminado.');
   header('Location:'.BASE_URL.'/pages/historia_clinica.php?id='.$hcId.'#tpl'); exit;
  }
+ if($ap==='eliminar_hc'){
+  $hid=(int)($_POST['id']??0);
+  if($hid){
+   // Borrado lógico: se oculta del sistema pero permanece en la base de datos.
+   db()->prepare("UPDATE historias_clinicas SET eliminado=1, eliminado_at=NOW(), eliminado_por=? WHERE id=?")->execute([$_SESSION['uid']??null,$hid]);
+   auditar('ELIMINAR_HC','historias_clinicas',$hid);
+   flash('ok','Historia clínica eliminada. Queda archivada en la base de datos.');
+  }
+  go('pages/historia_clinica.php');
+ }
+ if($ap==='estado_plan'){
+  $pid=(int)($_POST['plan_id']??0); $hcId=(int)($_POST['hc_id']??0); $est=$_POST['estado']??'';
+  if($pid && in_array($est,['borrador','aprobado','en_proceso','completado','cancelado'],true)){
+   db()->prepare("UPDATE planes_tratamiento SET estado=? WHERE id=?")->execute([$est,$pid]);
+   auditar('ESTADO_PLAN','planes_tratamiento',$pid,$est);
+   flash('ok','Estado del plan actualizado.');
+  }
+  header('Location:'.BASE_URL.'/pages/historia_clinica.php?id='.$hcId.'#tpl'); exit;
+ }
+ if($ap==='estado_item'){
+  $iid=(int)($_POST['item_id']??0); $hcId=(int)($_POST['hc_id']??0);
+  $est=$_POST['estado']??''; $ses=max(0,(int)($_POST['sesiones']??0));
+  if($iid && in_array($est,['pendiente','en_proceso','completado','cancelado'],true)){
+   $tot=(int)(db()->query("SELECT sesiones_total FROM plan_detalles WHERE id=$iid")->fetchColumn() ?: 1);
+   if($ses>$tot) $ses=$tot;
+   db()->prepare("UPDATE plan_detalles SET estado=?, sesiones_realizadas=? WHERE id=?")->execute([$est,$ses,$iid]);
+   // Recalcular el estado del plan según sus ítems (solo si el plan no está cancelado)
+   $pid=(int)(db()->query("SELECT plan_id FROM plan_detalles WHERE id=$iid")->fetchColumn() ?: 0);
+   if($pid){
+    $row=db()->query("SELECT COUNT(*) n, SUM(estado='completado') comp, SUM(estado='pendiente') pend FROM plan_detalles WHERE plan_id=$pid")->fetch();
+    $planEst=db()->query("SELECT estado FROM planes_tratamiento WHERE id=$pid")->fetchColumn();
+    if($planEst!=='cancelado'){
+     $nuevo = ($row['comp']==$row['n']) ? 'completado' : (($row['pend']==$row['n']) ? 'aprobado' : 'en_proceso');
+     db()->prepare("UPDATE planes_tratamiento SET estado=? WHERE id=?")->execute([$nuevo,$pid]);
+    }
+   }
+   auditar('ESTADO_ITEM_PLAN','plan_detalles',$iid,$est);
+   flash('ok','Tratamiento actualizado.');
+  }
+  header('Location:'.BASE_URL.'/pages/historia_clinica.php?id='.$hcId.'#tpl'); exit;
+ }
 }
 
 if($accion==='lista'){
  $titulo='Historias Clínicas'; $pagina_activa='hc';
  $q=trim($_GET['q']??'');
- $w='JOIN pacientes p ON hc.paciente_id=p.id WHERE 1=1'; $pm=[];
+ $orden=(($_GET['orden']??'asc')==='desc')?'desc':'asc';
+ $pg=max(1,(int)($_GET['p']??1)); $pp=20;
+ $w='JOIN pacientes p ON hc.paciente_id=p.id WHERE hc.eliminado=0'; $pm=[];
  if($pac_id){$w.=' AND hc.paciente_id=?';$pm[]=$pac_id;}
  if($q){$w.=' AND(p.nombres LIKE ? OR p.apellido_paterno LIKE ? OR hc.numero_hc LIKE ?)';$b="%$q%";$pm[]=$b;$pm[]=$b;$pm[]=$b;}
- $st=db()->prepare("SELECT hc.*,CONCAT(p.nombres,' ',p.apellido_paterno) AS pac,p.codigo AS cod FROM historias_clinicas hc $w ORDER BY hc.fecha_apertura DESC LIMIT 60");
+ $stc=db()->prepare("SELECT COUNT(*) FROM historias_clinicas hc $w"); $stc->execute($pm); $tot=(int)$stc->fetchColumn();
+ $pages=max(1,ceil($tot/$pp)); $pg=min($pg,$pages); $off=($pg-1)*$pp;
+ $st=db()->prepare("SELECT hc.*,CONCAT(p.nombres,' ',p.apellido_paterno) AS pac,p.codigo AS cod FROM historias_clinicas hc $w ORDER BY CAST(REGEXP_REPLACE(hc.numero_hc,'[^0-9]','') AS UNSIGNED) $orden, hc.id $orden LIMIT $pp OFFSET $off");
  $st->execute($pm); $lista=$st->fetchAll();
  $topbar_act='<a href="?accion=nueva'.($pac_id?"&paciente_id=$pac_id":'').'" class="btn btn-primary"><i class="bi bi-file-medical me-1"></i>Nueva HC</a>';
  require_once __DIR__.'/../includes/header.php';
 ?>
-<div class="card mb-3 p-3"><form method="GET" class="d-flex gap-2">
+<div class="card mb-3 p-3"><form method="GET" class="d-flex gap-2 flex-wrap align-items-center">
  <input type="hidden" name="accion" value="lista"><?php if($pac_id): ?><input type="hidden" name="paciente_id" value="<?=$pac_id?>"><?php endif; ?>
- <div class="flex-fill"><input type="text" name="q" class="form-control" placeholder="Paciente o N° HC..." value="<?=e($q)?>"></div>
+ <input type="hidden" name="orden" value="<?=e($orden)?>">
+ <div class="flex-fill" style="min-width:180px"><input type="text" name="q" class="form-control" placeholder="Paciente o N° HC..." value="<?=e($q)?>"></div>
  <button type="submit" class="btn btn-dk">Buscar</button>
+ <?php $flip=$orden==='asc'?'desc':'asc'; $qsOrden=http_build_query(array_filter(['accion'=>'lista','q'=>$q,'paciente_id'=>$pac_id?:null,'orden'=>$flip], fn($v)=>$v!==null&&$v!=='')); ?>
+ <a href="?<?=$qsOrden?>" class="btn btn-dk btn-sm" title="Cambiar orden por N° HC">
+   <i class="bi bi-sort-numeric-<?=$orden==='asc'?'down':'up-alt'?> me-1"></i><?=$orden==='asc'?'N° HC: 1 → último':'N° HC: último → 1'?>
+ </a>
+ <small class="ms-auto" style="color:var(--t2)"><?=$tot?> HC</small>
 </form></div>
 <div class="card"><div class="table-responsive"><table class="table mb-0">
  <thead><tr><th>N° HC</th><th>Paciente</th><th>Apertura</th><th>Motivo</th><th>Estado</th><th></th></tr></thead>
@@ -84,6 +149,11 @@ if($accion==='lista'){
   <td><div class="d-flex gap-1">
    <a href="?id=<?=$hc['id']?>" class="btn btn-primary btn-sm">Abrir HC</a>
    <a href="<?=BASE_URL?>/pages/hc_pdf.php?id=<?=$hc['id']?>" target="_blank" class="btn btn-dk btn-sm btn-ico" title="Ver PDF"><i class="bi bi-file-pdf"></i></a>
+   <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar esta historia clínica? Se ocultará del sistema pero quedará guardada en la base de datos.')">
+    <input type="hidden" name="accion" value="eliminar_hc">
+    <input type="hidden" name="id" value="<?=$hc['id']?>">
+    <button class="btn btn-del btn-sm btn-ico" title="Eliminar"><i class="bi bi-trash"></i></button>
+   </form>
   </div></td>
  </tr>
  <?php endforeach; if(!$lista): ?>
@@ -91,11 +161,19 @@ if($accion==='lista'){
  <?php endif; ?>
  </tbody>
 </table></div></div>
+<?php if($pages>1): ?>
+<nav class="mt-3 d-flex justify-content-end"><ul class="pagination pagination-sm">
+ <?php for($i=1;$i<=$pages;$i++): ?>
+ <li class="page-item <?=$i===$pg?'active':''?>"><a class="page-link" href="?<?=http_build_query(array_filter(['accion'=>'lista','q'=>$q,'orden'=>$orden,'paciente_id'=>$pac_id?:null,'p'=>$i], fn($v)=>$v!==null&&$v!==''))?>"><?=$i?></a></li>
+ <?php endfor; ?>
+</ul></nav>
+<?php endif; ?>
 <?php require_once __DIR__.'/../includes/footer.php';
 
 }elseif($accion==='ver' && $id){
  $st=db()->prepare("SELECT hc.*,CONCAT(p.nombres,' ',p.apellido_paterno) AS pac_nm,p.id AS pid,p.dni,p.fecha_nacimiento,p.alergias,p.enfermedades_base,p.medicacion_actual,CONCAT(u.nombre,' ',u.apellidos) AS dr FROM historias_clinicas hc JOIN pacientes p ON hc.paciente_id=p.id LEFT JOIN usuarios u ON hc.doctor_id=u.id WHERE hc.id=?");
  $st->execute([$id]); $hc=$st->fetch(); if(!$hc){flash('error','HC no encontrada');go('pages/historia_clinica.php');}
+ if(!empty($hc['eliminado'])){flash('error','Esta historia clínica fue eliminada.');go('pages/historia_clinica.php');}
  $evols=db()->prepare("SELECT e.*,CONCAT(u.nombre,' ',u.apellidos) AS dr FROM evoluciones e LEFT JOIN usuarios u ON e.doctor_id=u.id WHERE e.hc_id=? ORDER BY e.fecha DESC"); $evols->execute([$id]); $evols=$evols->fetchAll();
  $adjs=db()->prepare("SELECT * FROM adjuntos WHERE hc_id=? ORDER BY created_at DESC"); $adjs->execute([$id]); $adjs=$adjs->fetchAll();
  $odont=db()->prepare("SELECT * FROM odontogramas WHERE hc_id=? ORDER BY fecha DESC LIMIT 1"); $odont->execute([$id]); $odont=$odont->fetch();
@@ -279,20 +357,43 @@ require_once __DIR__.'/../includes/header.php';
   </div>
   <?php if($plan): ?>
   <div class="p-4">
-   <div class="d-flex justify-content-between align-items-center mb-3">
-    <span class="badge <?=['borrador'=>'bgr','aprobado'=>'bc','en_proceso'=>'ba','completado'=>'bg','cancelado'=>'br'][$plan['estado']]?>"><?=strtoupper($plan['estado'])?></span>
+   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <form method="POST" class="d-flex gap-2 align-items-center">
+     <input type="hidden" name="accion" value="estado_plan">
+     <input type="hidden" name="plan_id" value="<?=$plan['id']?>">
+     <input type="hidden" name="hc_id" value="<?=$id?>">
+     <span style="color:var(--t2);font-size:12px">Estado del plan:</span>
+     <select name="estado" class="form-select form-select-sm" style="width:auto">
+      <?php foreach(['borrador','aprobado','en_proceso','completado','cancelado'] as $opt): ?>
+       <option value="<?=$opt?>" <?=$plan['estado']===$opt?'selected':''?>><?=strtoupper($opt)?></option>
+      <?php endforeach; ?>
+     </select>
+     <button class="btn btn-dk btn-sm"><i class="bi bi-check-lg me-1"></i>Guardar</button>
+    </form>
     <span class="mon fw-bold" style="font-size:18px;color:var(--c)"><?=mon((float)$plan['total'])?></span>
    </div>
    <div class="table-responsive"><table class="table mb-0">
-    <thead><tr><th>Tratamiento</th><th>Diente</th><th>Precio</th><th>Sesiones</th><th>Estado</th></tr></thead>
+    <thead><tr><th>Tratamiento</th><th>Diente</th><th>Precio</th><th style="min-width:230px">Sesiones / Estado</th></tr></thead>
     <tbody>
-    <?php $ec2=['pendiente'=>'ba','en_proceso'=>'bb','completado'=>'bg','cancelado'=>'br'];
-    foreach($plan_det as $det): ?><tr>
+    <?php foreach($plan_det as $det): ?><tr>
      <td><strong><?=e($det['nombre_tratamiento'])?></strong><?php if($det['notas']): ?><br><small><?=e($det['notas'])?></small><?php endif; ?></td>
      <td><?=$det['diente']?'<span class="badge bgr">🦷 '.e($det['diente']).'</span>':'—'?></td>
      <td class="mon"><?=mon((float)$det['precio'])?></td>
-     <td><small><?=$det['sesiones_realizadas']?>/<?=$det['sesiones_total']?></small></td>
-     <td><span class="badge <?=$ec2[$det['estado']]?>"><?=$det['estado']?></span></td>
+     <td>
+      <form method="POST" class="d-flex gap-1 align-items-center flex-wrap">
+       <input type="hidden" name="accion" value="estado_item">
+       <input type="hidden" name="item_id" value="<?=$det['id']?>">
+       <input type="hidden" name="hc_id" value="<?=$id?>">
+       <input type="number" name="sesiones" value="<?=(int)$det['sesiones_realizadas']?>" min="0" max="<?=(int)$det['sesiones_total']?>" class="form-control form-control-sm" style="width:58px" title="Sesiones realizadas">
+       <span style="color:var(--t3);font-size:11px">/<?=(int)$det['sesiones_total']?></span>
+       <select name="estado" class="form-select form-select-sm" style="width:auto">
+        <?php foreach(['pendiente','en_proceso','completado','cancelado'] as $opt): ?>
+         <option value="<?=$opt?>" <?=$det['estado']===$opt?'selected':''?>><?=$opt?></option>
+        <?php endforeach; ?>
+       </select>
+       <button class="btn btn-primary btn-sm" title="Guardar"><i class="bi bi-check-lg"></i></button>
+      </form>
+     </td>
     </tr><?php endforeach; ?>
     </tbody>
    </table></div>
@@ -356,6 +457,12 @@ require_once __DIR__.'/../includes/header.php';
      <div class="mt-2 d-flex gap-1">
       <a href="<?=BASE_URL?>/uploads/<?=e($a['ruta'])?>" target="_blank" class="btn btn-dk btn-sm flex-fill"><i class="bi bi-eye"></i></a>
       <a href="<?=BASE_URL?>/uploads/<?=e($a['ruta'])?>" download class="btn btn-primary btn-sm flex-fill"><i class="bi bi-download"></i></a>
+      <form method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este archivo adjunto? Esta acción no se puede deshacer.')">
+       <input type="hidden" name="accion" value="eliminar_adjunto">
+       <input type="hidden" name="hc_id" value="<?=$id?>">
+       <input type="hidden" name="adjunto_id" value="<?=$a['id']?>">
+       <button class="btn btn-del btn-sm" title="Eliminar"><i class="bi bi-trash"></i></button>
+      </form>
      </div>
     </div>
    </div>

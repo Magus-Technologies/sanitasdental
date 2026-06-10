@@ -345,7 +345,6 @@ document.addEventListener('DOMContentLoaded',function(){
   <?php if(puedeVer('tratamientos')): ?><a href="<?=BASE_URL?>/pages/tratamientos.php" class="<?=$p==='trat'?'act':''?>"><i class="bi bi-clipboard2-pulse-fill"></i>Tratamientos</a><?php endif; ?>
   <?php if(puedeVer('presupuestos')): ?><a href="<?=BASE_URL?>/pages/presupuestos.php" class="<?=$p==='presup'?'act':''?>"><i class="bi bi-receipt"></i>Presupuestos</a><?php endif; ?>
   <?php if(puedeVer('facturacion')): ?><a href="<?=BASE_URL?>/pages/facturacion.php" class="<?=$p==='fact'?'act':''?>"><i class="bi bi-cash-coin"></i>Facturación</a><?php endif; ?>
-  <?php if(puedeVer('facturacion')): ?><a href="<?=BASE_URL?>/pages/notas_credito.php" class="<?=$p==='notas'?'act':''?>" data-title="Notas Crédito/Débito"><i class="bi bi-file-earmark-minus"></i>Notas Créd./Déb.</a><?php endif; ?>
   <?php if(puedeVer('inventario')): ?>
   <a href="<?=BASE_URL?>/pages/inventario.php" class="<?=$p==='inv'?'act':''?>">
    <i class="bi bi-box-seam-fill"></i>Inventario

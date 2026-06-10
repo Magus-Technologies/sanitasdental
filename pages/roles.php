@@ -10,11 +10,12 @@ $modulos = [
     'dashboard'        => ['Dashboard',           'bi-grid-fill',                'Principal'],
     'pacientes'        => ['Pacientes',           'bi-people-fill',              'Atención'],
     'citas'            => ['Agenda / Citas',      'bi-calendar2-week-fill',      'Atención'],
-    'google_calendar'  => ['Google Calendar',    'bi-google',                   'Atención'],
     'historia_clinica' => ['Historia Clínica',    'bi-file-medical-fill',        'Atención'],
     'odontograma'      => ['Odontograma',         'bi-grid-3x3-gap-fill',        'Atención'],
-    'cefalometria'     => ['Cefalometría', 'bi-rulers',                   'Atención'],
+    'cefalometria'     => ['Cefalometría',      'bi-rulers',                   'Atención'],
+    'endodoncia'       => ['Endodoncia',          'bi-tooth',                    'Atención'],
     'tratamientos'     => ['Tratamientos',        'bi-clipboard2-pulse-fill',    'Clínica'],
+    'presupuestos'     => ['Presupuestos',         'bi-receipt',                  'Clínica'],
     'facturacion'      => ['Facturación',         'bi-cash-coin',                'Clínica'],
     'inventario'       => ['Inventario',          'bi-box-seam-fill',            'Clínica'],
     'notificaciones'   => ['WhatsApp / Notif.',   'bi-whatsapp',                 'Clínica'],
@@ -99,7 +100,11 @@ require_once __DIR__.'/../../includes/header.php';
      <?php foreach ($mods as $key => $info): ?>
      <tr>
       <td>
+       <?php if ($info['ico'] === 'bi-tooth'): ?>
+       <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 16 16" fill="currentColor" style="color:var(--c);vertical-align:-2px;margin-right:8px"><path d="M8 1.6c-1 0-1.5.45-2.6.45S3.55 1.6 2.7 2.1C1.45 2.85 1.05 4.3 1.05 5.75c0 1.5.45 2.75.9 4.2.3 1 .4 2.05.65 3.05.2.78.42 1.65 1.12 1.85.78.22 1.05-.85 1.18-1.55.2-.95.28-2 .58-2.85.1-.35.28-.75.85-.75s.75.4.85.75c.3.85.38 1.9.58 2.85.13.7.4 1.77 1.18 1.55.7-.2.92-1.07 1.12-1.85.25-1 .35-2.05.65-3.05.45-1.45.9-2.7.9-4.2 0-1.45-.4-2.9-1.65-3.65C12.6 1.6 11.7 2.05 10.6 2.05S9 1.6 8 1.6z"/></svg>
+       <?php else: ?>
        <i class="bi <?=e($info['ico'])?> me-2" style="color:var(--c)"></i>
+       <?php endif; ?>
        <strong><?=e($info['lbl'])?></strong>
        <br><small class="mon" style="font-size:10px;color:var(--t3)"><?=e($key)?></small>
       </td>

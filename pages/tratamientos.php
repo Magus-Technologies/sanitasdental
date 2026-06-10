@@ -295,7 +295,7 @@ document.getElementById('catColor').addEventListener('input',function(){
      <?php if($det_ex): foreach($det_ex as $i=>$det): ?>
      <tr>
       <td><input type="hidden" name="trat_orden[]" value="<?=$i+1?>"><?=$i+1?></td>
-      <td><input type="hidden" name="trat_id[]" value="<?=$det['tratamiento_id']??''?>"><input type="text" name="trat_nombre[]" class="form-control form-control-sm" value="<?=e($det['nombre_tratamiento'])?>" required></td>
+      <td><input type="hidden" name="trat_id[]" value="<?=$det['tratamiento_id']??''?>"><input type="text" name="trat_nombre[]" class="form-control form-control-sm ac-nombre" autocomplete="off" value="<?=e($det['nombre_tratamiento'])?>" required></td>
       <td><input type="text" name="trat_diente[]" class="form-control form-control-sm" value="<?=e($det['diente']??'')?>" style="width:70px" placeholder="11"></td>
       <td><input type="number" name="trat_precio[]" class="form-control form-control-sm precio-inp" value="<?=$det['precio']?>" step="0.01" min="0" style="width:90px" oninput="calcTotal()"></td>
       <td><input type="number" name="trat_sesiones[]" class="form-control form-control-sm" value="<?=$det['sesiones_total']?>" min="1" style="width:60px"></td>
@@ -338,6 +338,8 @@ document.getElementById('catColor').addEventListener('input',function(){
 </form>
 <?php
 $xscript='<script>
+window.MON='.json_encode(getCfg('moneda','S/')).';
+window.CATALOGO='.json_encode(array_map(fn($t)=>['id'=>(int)$t['id'],'nombre'=>$t['nombre'],'precio'=>(float)$t['precio_base'],'cat'=>$t['cat']],$trats)).';
 let rowCount='.($det_ex?count($det_ex):0).';
 function addTratamiento(t){
  addRow(t.id,t.nombre,t.precio);
@@ -347,7 +349,7 @@ function addRow(tid="",nm="",px=0){
  rowCount++;
  const tr=document.createElement("tr");
  tr.innerHTML=`<td><input type="hidden" name="trat_orden[]" value="${rowCount}">${rowCount}</td>
-  <td><input type="hidden" name="trat_id[]" value="${tid}"><input type="text" name="trat_nombre[]" class="form-control form-control-sm" value="${nm}" required></td>
+  <td><input type="hidden" name="trat_id[]" value="${tid}"><input type="text" name="trat_nombre[]" class="form-control form-control-sm ac-nombre" autocomplete="off" value="${nm}" required></td>
   <td><input type="text" name="trat_diente[]" class="form-control form-control-sm" style="width:70px" placeholder="11"></td>
   <td><input type="number" name="trat_precio[]" class="form-control form-control-sm precio-inp" value="${px}" step="0.01" min="0" style="width:90px" oninput="calcTotal()"></td>
   <td><input type="number" name="trat_sesiones[]" class="form-control form-control-sm" value="1" min="1" style="width:60px"></td>
@@ -359,6 +361,7 @@ function calcTotal(){
  let tot=0; document.querySelectorAll(".precio-inp").forEach(i=>tot+=parseFloat(i.value)||0);
  document.getElementById("totalLbl").textContent="S/ "+tot.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,",");
 }
-</script>';
+</script>
+<script src="'.BASE_URL.'/assets/js/cat-autocomplete.js"></script>';
 require_once __DIR__.'/../includes/footer.php';
 }

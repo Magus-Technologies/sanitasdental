@@ -111,7 +111,7 @@ function e(string $s): string { return htmlspecialchars($s,ENT_QUOTES,'UTF-8'); 
 function mon(float $m): string { return getCfg('moneda','S/').' '.number_format($m,2); }
 function fDate(?string $d): string { return $d ? date('d/m/Y',strtotime($d)) : '�'; }
 function fDT(?string $d): string   { return $d ? date('d/m/Y H:i',strtotime($d)) : '�'; }
-function edad(?string $f): string  { return $f ? (new DateTime($f))->diff(new DateTime())->y.' a�os' : '�'; }
+function edad(?string $f): string  { return $f ? (new DateTime($f))->diff(new DateTime())->y.' años' : '�'; }
 function go(string $url): void     { header('Location:'.BASE_URL.'/'.ltrim($url,'/')); exit; }
 
 function flash(string $t, string $m): void { sesion(); $_SESSION['flash']=compact('t','m'); }
