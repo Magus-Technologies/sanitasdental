@@ -1,8 +1,46 @@
+# ============================================================
+#  DentalSys-Magus · Seguridad (Apache)  —  colocar en la raíz /dental
+# ============================================================
+
+# 1) Sin listado de directorios
 Options -Indexes
-DirectoryIndex index.php login.php
-# Security headers
-<IfModule mod_headers.c>
-    Header always set X-Content-Type-Options nosniff
-    Header always set X-Frame-Options SAMEORIGIN
-    Header always set X-XSS-Protection "1; mode=block"
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 2) Bloquear el repositorio Git y archivos ocultos sensibles
+  RewriteRule (^|/)\.(git|env|htpasswd|htaccess~) - [F,L]
+
+  # 3) Bloquear acceso HTTP directo a carpetas internas
+  #    (se usan SOLO del lado servidor con require/include)
+  RewriteRule ^(includes|migrations|database|vendor|node_modules)(/|$) - [F,L]
+
+  # 4) Bloquear archivos sensibles por extensión
+  RewriteRule \.(sql|log|env|sh|bak|old|ini|lock|md|dist|example|sample)$ - [F,L]
 </IfModule>
+
+# 5) Respaldo por si mod_rewrite no está: bloqueo por extensión
+<FilesMatch "\.(sql|log|env|sh|bak|old|ini|lock|md|dist|example|sample)$">
+  Require all denied
+</FilesMatch>
+
+# 6) Proteger explícitamente archivos de configuración
+<FilesMatch "^(config\.php|config_sunat\.php|config\.example\.php|composer\.(json|lock))$">
+  Require all denied
+</FilesMatch>
+
+# 7) Cabeceras de seguridad
+<IfModule mod_headers.c>
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+  # HSTS: solo porque el dominio ya trabaja 100% en HTTPS
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# 8) Evitar ejecución de PHP dentro de la carpeta de subidas
+<IfModule mod_rewrite.c>
+  RewriteRule ^uploads/.*\.(php|phtml|phar|cgi|pl)$ - [F,L]
+</IfModule>
+

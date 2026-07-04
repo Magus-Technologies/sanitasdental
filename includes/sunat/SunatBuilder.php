@@ -42,7 +42,8 @@ class SunatBuilder
     {
         $tipoDocAfectado = $pagOrig['tipo_comprobante'] === 'factura' ? '01' : '03';
         $serieNumAfectado = $pagOrig['serie'] . '-' . str_pad((string)$pagOrig['numero'], 8, '0', STR_PAD_LEFT);
-        $aplica_igv = !isset($pagOrig['aplica_igv']) || $pagOrig['aplica_igv'];
+        // Use the value stored in the nota at creation time — never re-derive
+        $aplica_igv = (bool)($nota['aplica_igv'] ?? (!isset($pagOrig['aplica_igv']) || $pagOrig['aplica_igv']));
 
         return [
             'endpoint'              => SUNAT_ENDPOINT,

@@ -32,6 +32,11 @@ class SunatClient
         return $this->post('/enviar/documento/electronico', $payload);
     }
 
+    public function enviarBaja(array $payload): array
+    {
+        return $this->post('/enviar/comunicacion/baja', $payload);
+    }
+
     private function post(string $path, array $payload): array
     {
         $url  = $this->baseUrl . $path;

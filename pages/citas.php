@@ -9,6 +9,7 @@ define('GC_AVAILABLE', file_exists(__DIR__.'/../includes/GoogleCalendarService.p
         return true;
     }catch(Exception $e){ return false; } })());
 if(GC_AVAILABLE) require_once __DIR__.'/../includes/GoogleCalendarService.php';
+require_once __DIR__.'/../includes/wa_notify.php';
 requiereLogin();
 $accion=$_GET['accion']??'calendario'; $id=(int)($_GET['id']??0);
 
@@ -45,6 +46,19 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   try{$nt=db()->query("SELECT COALESCE(MAX(numero),0)+1 FROM turnos WHERE DATE(created_at)=CURDATE()")->fetchColumn();
   $st_pac=db()->prepare("SELECT CONCAT(nombres,' ',apellido_paterno) FROM pacientes WHERE id=?"); $st_pac->execute([(int)$_POST['paciente_id']]); $nm_pac=$st_pac->fetchColumn();
   db()->prepare("INSERT INTO turnos(cita_id,numero,nombre_mostrar)VALUES(?,?,?)")->execute([$nid,$nt,$nm_pac]);}catch(Exception $e){}
+  // Confirmación automática por WhatsApp (si está activada en Configuración)
+  if(getCfg('wa_confirma_cita','0')==='1'){
+    try{
+      $pcf=db()->prepare("SELECT CONCAT(nombres,' ',apellido_paterno) pac, telefono FROM pacientes WHERE id=?");
+      $pcf->execute([(int)$_POST['paciente_id']]); $pcf=$pcf->fetch();
+      if($pcf && trim((string)($pcf['telefono']??''))!==''){
+        $tplc=getCfg('plantilla_wa_confirma','Hola *{nombre}*, tu cita en *{clinica}* quedó agendada para el *{fecha}* a las *{hora}*. ¡Te esperamos! Ante consultas: {telefono}');
+        $mc=wa_plantilla($tplc,['{nombre}'=>$pcf['pac'],'{clinica}'=>getCfg('clinica_nombre','la clínica'),'{fecha}'=>fDate($d['fecha']),'{hora}'=>substr($d['hora_inicio'],0,5),'{telefono}'=>getCfg('clinica_telefono','')]);
+        $okc=wa_enviar($pcf['telefono'],$mc);
+        db()->prepare("INSERT INTO notificaciones(tipo,destinatario,asunto,mensaje,estado,referencia_tipo,referencia_id) VALUES('whatsapp',?,?,?,?, 'cita_confirma', ?)")->execute([$pcf['telefono'],'Confirmación de cita',$mc,$okc?'enviado':'error',$nid]);
+      }
+    }catch(Exception $e){}
+  }
   flash('ok',"Cita agendada: $cod"); go("pages/citas.php?accion=ver&id=$nid");}
  }
  if($ap==='estado'){

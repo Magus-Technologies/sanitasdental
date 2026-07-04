@@ -58,7 +58,10 @@ function db(): PDO {
 // -- SESI�N ---------------------------------------------
 function sesion(): void {
     if (session_status()===PHP_SESSION_NONE) {
-        session_set_cookie_params(['lifetime'=>28800,'path'=>'/','httponly'=>true,'samesite'=>'Lax']);
+    $__b = defined('BASE_URL') ? trim(BASE_URL) : '';
+        $__s = preg_replace('/[^A-Za-z0-9]/','', $__b); if ($__s==='') $__s='root';
+        session_name('ODONTOSESS_'.$__s);
+        session_set_cookie_params(['lifetime'=>28800,'path'=>($__b!==''?rtrim($__b,'/').'/':'/'),'httponly'=>true,'samesite'=>'Lax','secure'=>(!empty($_SERVER['HTTPS'])&&strtolower($_SERVER['HTTPS'])!=='off')]);
         session_start();
     }
 }

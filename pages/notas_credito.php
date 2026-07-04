@@ -113,6 +113,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash($err === 0 ? 'ok' : 'error', "XML regenerado: $ok ok, $err error(es).");
         go("pages/notas_credito.php");
     }
+
+    if ($ap === 'dar_de_baja') {
+        $nid    = (int)$_POST['id'];
+        $motivo = trim($_POST['motivo'] ?? 'ERROR EN EMISION DE COMPROBANTE');
+        $r      = (new SunatService(db()))->darDeBajaNota($nid, $motivo);
+        flash($r['ok'] ? 'ok' : 'error', $r['ok'] ? $r['mensaje'] : 'Error al dar de baja: '.$r['mensaje']);
+        go("pages/notas_credito.php?accion=ver&id=$nid");
+    }
 }
 
 // ─── DESCARGAS XML / CDR ───────────────────────────────────────────
@@ -416,6 +424,23 @@ function postAction(accion, id, msg) {
         <?=empty($nota['sunat_xml'])?'Generar XML':'Regenerar XML'?>
        </button>
       </form>
+     <?php endif; ?>
+     <?php if ($se === 'aceptado' && $nota['estado'] !== 'anulada'): ?>
+      <hr class="my-2"/>
+      <form method="POST" onsubmit="return confirm('¿Dar de baja esta nota ante SUNAT? Esta acción no se puede deshacer.')">
+       <input type="hidden" name="accion" value="dar_de_baja">
+       <input type="hidden" name="id" value="<?=$id?>">
+       <div class="mb-2">
+        <label class="form-label" style="font-size:11px;color:var(--t2)">Motivo de baja</label>
+        <input type="text" name="motivo" class="form-control form-control-sm"
+               value="ERROR EN EMISION DE COMPROBANTE" maxlength="100" required/>
+       </div>
+       <button type="submit" class="btn btn-danger btn-sm w-100">
+        <i class="bi bi-trash me-1"></i>Dar de baja (SUNAT)
+       </button>
+      </form>
+     <?php elseif ($nota['estado'] === 'anulada'): ?>
+      <div class="mt-2 p-2 rounded text-center" style="background:var(--bg3);font-size:11px;color:var(--t2)">Esta nota fue dada de baja ante SUNAT.</div>
      <?php endif; ?>
     </div>
    </div>

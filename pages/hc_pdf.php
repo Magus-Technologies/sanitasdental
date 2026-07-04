@@ -51,6 +51,28 @@ if ($odont) {
     foreach ($ds->fetchAll() as $d) $dientes[$d['numero_diente']][] = $d;
 }
 
+// Ortodoncia (atenciones de esta HC)
+$ortodoncias = [];
+try {
+    $oq = db()->prepare("SELECT o.*, CONCAT(u.nombre,' ',u.apellidos) AS dr
+        FROM ortodoncias o LEFT JOIN usuarios u ON o.doctor_id=u.id
+        WHERE o.hc_id=? ORDER BY o.fecha_atencion ASC, o.id ASC");
+    $oq->execute([$id]); $ortodoncias = $oq->fetchAll();
+} catch (Throwable $e) {}
+
+// Endodoncia (fichas de esta HC + odontometría)
+$endodoncias = []; $endo_odo = [];
+try {
+    $eq = db()->prepare("SELECT ef.*, CONCAT(u.nombre,' ',u.apellidos) AS dr
+        FROM endodoncia_fichas ef LEFT JOIN usuarios u ON ef.doctor_id=u.id
+        WHERE ef.hc_id=? ORDER BY ef.id ASC");
+    $eq->execute([$id]); $endodoncias = $eq->fetchAll();
+    foreach ($endodoncias as $ef) {
+        $om = db()->prepare("SELECT * FROM endodoncia_odontometria WHERE ficha_id=? ORDER BY conducto");
+        $om->execute([$ef['id']]); $endo_odo[$ef['id']] = $om->fetchAll();
+    }
+} catch (Throwable $e) {}
+
 // Config clínica
 $clinica = getCfg('clinica_nombre','Clínica Dental');
 $dir_cli = getCfg('clinica_direccion','');
@@ -201,7 +223,7 @@ header('Content-Type: text/html; charset=utf-8');
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Roboto', Arial, sans-serif; font-size: 10pt; color: #1A2332; background: #fff; }
+body { font-family: 'Roboto', Arial, sans-serif; font-size: 10pt; color: #1A2332; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
 /* Botón imprimir - solo pantalla */
 @media screen {
@@ -212,12 +234,16 @@ body { font-family: 'Roboto', Arial, sans-serif; font-size: 10pt; color: #1A2332
   .page { max-width: 210mm; margin: 20px auto; background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.15); padding: 20mm; }
 }
 @media print {
+  @page { size: A4; margin: 13mm 14mm; }
   .print-bar { display: none !important; }
-  body { padding: 0; background: white; }
-  .page { padding: 10mm 15mm; margin: 0; }
-  .no-break { page-break-inside: avoid; }
-  h2 { page-break-after: avoid; }
-  .page-break { page-break-before: always; }
+  html, body { padding: 0; margin: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* El margen lo da @page (igual en TODAS las hojas); aquí sin padding para no duplicar */
+  .page { padding: 0; margin: 0; max-width: none; box-shadow: none; }
+  /* Flujo continuo: NO separar módulos en hojas (evita espacios en blanco) */
+  .page-break { page-break-before: auto !important; }
+  /* Solo evitar cortar a la mitad bloques pequeños */
+  .no-break, .evolucion-item, .firma-section { page-break-inside: avoid; }
+  .section-title { page-break-after: avoid; }
 }
 
 /* ESTILOS DEL DOCUMENTO */
@@ -531,6 +557,86 @@ body { font-family: 'Roboto', Arial, sans-serif; font-size: 10pt; color: #1A2332
     <?php if ($ev['diente']): ?><div style="font-size:8.5pt;color:#607080">🦷 <strong>Diente:</strong> <?= htmlspecialchars($ev['diente']) ?></div><?php endif; ?>
     <?php if ($ev['medicacion']): ?><div style="font-size:8.5pt;color:#607080">💊 <strong>Medicación:</strong> <?= htmlspecialchars($ev['medicacion']) ?></div><?php endif; ?>
     <?php if ($ev['proximo_control']): ?><div style="font-size:8.5pt;color:#607080">📅 <strong>Próximo control:</strong> <?= fd($ev['proximo_control']) ?></div><?php endif; ?>
+  </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
+<!-- ── ORTODONCIA ── -->
+<?php if ($ortodoncias):
+  $arcosConfig=['acero'=>'Acero inox.','niti'=>'NiTi','termico'=>'Térmico (ThermoNiTi)','cobre_niti'=>'Cobre-NiTi','tma'=>'TMA','beta_titanio'=>'Beta-Titanio','acero_trenzado'=>'Acero trenzado','acero_rectangular'=>'Acero rectangular','ideal_archwire'=>'Arco ideal'];
+  $accConfig=['resorte_abierto'=>'Resorte abierto','resorte_cerrado'=>'Resorte cerrado','cadena_elastica'=>'Cadena elástica','ligadura_metalica'=>'Ligadura metálica','ligadura_elastomerica'=>'Ligadura elastomérica','tubo_molar'=>'Tubo molar','bracket_metalico'=>'Bracket metálico','bracket_ceramico'=>'Bracket cerámico','bracket_safiro'=>'Bracket de zafiro','banda_ortodoncia'=>'Banda de ortodoncia','boton_lingual'=>'Botón lingual','gancho_retraccion'=>'Gancho de retracción','arco_utilitario'=>'Arco utilitario','retenedor'=>'Retenedor','placa_hawley'=>'Placa Hawley','expansor'=>'Expansor','disyuntor'=>'Disyuntor palatino','elastico_intermaxilar'=>'Elástico intermaxilar','stop_resorte'=>'Stop de resorte','barra_palatina'=>'Barra palatina','arco_lingual'=>'Arco lingual'];
+  $evalLabels=['clase_molar'=>'Clase molar','clase_canina'=>'Clase canina','overjet'=>'Overjet','overbite'=>'Overbite','mordida'=>'Mordida','linea_media'=>'Línea media','apiñamiento'=>'Apiñamiento','espaciamiento'=>'Espaciamiento'];
+?>
+<div class="section page-break">
+  <div class="section-title blue">😬 Ortodoncia (<?= count($ortodoncias) ?> atención<?= count($ortodoncias)>1?'es':'' ?>)</div>
+  <?php foreach ($ortodoncias as $o):
+    $arcosRaw = json_decode($o['tipo_arco'] ?? '[]', true) ?: [];
+    $arcos = [];
+    foreach ($arcosRaw as $a) $arcos[] = is_string($a) ? ['tipo'=>$a,'medida'=>'','seccion'=>'','arcada'=>'ambas'] : $a;
+    $acc = []; $evalG = []; $procLimpio = $o['procedimientos'] ?? '';
+    if (preg_match('/\[ACCESORIOS:(.*?)\]\[EVAL:(.*?)\]$/s', $procLimpio, $mm)) {
+        $acc   = json_decode($mm[1], true) ?: [];
+        $evalG = json_decode($mm[2], true) ?: [];
+        $procLimpio = trim(preg_replace('/\[ACCESORIOS:.*\]\[EVAL:.*\]/s', '', $procLimpio));
+    }
+  ?>
+  <div class="no-break" style="margin-bottom:10px;border:1px solid #DDE6EE;border-radius:6px;padding:8px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+      <strong style="color:#1A2332;font-size:9.5pt"><?= $o['tipo']==='instalacion'?'Instalación inicial':'Control de seguimiento' ?> — <?= fd($o['fecha_atencion']) ?></strong>
+      <span style="font-size:8pt;color:#607080"><?= rv($o['dr']) ?><?= !empty($o['proximo_control'])?' · Próx.: '.fd($o['proximo_control']):'' ?></span>
+    </div>
+    <?php if (array_filter($evalG)): $ev=[]; foreach($evalG as $k=>$v){ if($v!=='' && $v!==null) $ev[]=($evalLabels[$k]??$k).': '.$v; } if($ev): ?>
+    <div style="font-size:8.5pt;color:#3A4654;margin-bottom:4px;line-height:1.6"><strong>Evaluación:</strong> <?= htmlspecialchars(implode('  ·  ',$ev)) ?></div>
+    <?php endif; endif; ?>
+    <?php if ($arcos): $as=[]; foreach($arcos as $a){ $t=$arcosConfig[$a['tipo']??'']??($a['tipo']??''); $extra=trim(($a['medida']??'').' '.($a['seccion']??'')); $arc=$a['arcada']??'ambas'; $as[]=$t.($extra?' '.$extra:'').($arc&&$arc!=='ambas'?' ('.$arc.')':''); } ?>
+    <div style="font-size:8.5pt;color:#3A4654;margin-bottom:4px;line-height:1.6"><strong>Arcos:</strong> <?= htmlspecialchars(implode('  ·  ',$as)) ?></div>
+    <?php endif; ?>
+    <?php if ($acc): $ac=[]; foreach($acc as $x){ $lbl=$accConfig[$x['item']??'']??($x['item']??''); $ac[]=$lbl.(!empty($x['notas'])?' ('.$x['notas'].')':''); } ?>
+    <div style="font-size:8.5pt;color:#3A4654;margin-bottom:4px;line-height:1.6"><strong>Accesorios:</strong> <?= htmlspecialchars(implode('  ·  ',$ac)) ?></div>
+    <?php endif; ?>
+    <?php if (trim($procLimpio)!==''): ?><div style="font-size:8.5pt;color:#3A4654;margin-bottom:4px"><strong>Procedimientos:</strong> <?= r($procLimpio) ?></div><?php endif; ?>
+    <?php if (trim($o['observaciones']??'')!==''): ?><div style="font-size:8.5pt;color:#3A4654"><strong>Observaciones:</strong> <?= r($o['observaciones']) ?></div><?php endif; ?>
+  </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
+<!-- ── ENDODONCIA ── -->
+<?php if ($endodoncias): ?>
+<div class="section page-break">
+  <div class="section-title red">🦷 Endodoncia (<?= count($endodoncias) ?> ficha<?= count($endodoncias)>1?'s':'' ?>)</div>
+  <?php foreach ($endodoncias as $ef):
+      $tipos = [];
+      foreach (['biopulpectomia'=>'Biopulpectomía','necropulpectomia'=>'Necropulpectomía','retratamiento'=>'Retratamiento','proteccion_pulpar'=>'Protección pulpar','apicogenesis'=>'Apicogénesis','apexificacion'=>'Apexificación','cirugia_parendodontica'=>'Cirugía parendodóntica'] as $k=>$lbl) if(!empty($ef[$k])) $tipos[]=$lbl;
+      $meds = [];
+      foreach (['med_antibiotico'=>'Antibiótico','med_hidroxido_calcio_a'=>'Hidróxido de calcio','med_paramonoclorofenol'=>'Paramonoclorofenol','med_eugenol'=>'Eugenol','med_formocresol'=>'Formocresol','med_otro'=>'Otro'] as $k=>$lbl) if(!empty($ef[$k])) $meds[]=$lbl;
+  ?>
+  <div class="no-break" style="margin-bottom:10px;border:1px solid #DDE6EE;border-radius:6px;padding:8px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+      <strong style="color:#1A2332;font-size:9.5pt">Pieza <?= rv($ef['pieza']) ?></strong>
+      <span style="font-size:8pt;color:#607080">Estado: <strong><?= strtoupper(rv($ef['estado'])) ?></strong></span>
+    </div>
+    <div style="font-size:8.5pt;color:#3A4654;line-height:1.7">
+      <strong>Dx presuntivo:</strong> <?= rv($ef['diagnostico_presuntivo']) ?> &nbsp;·&nbsp;
+      <strong>Dx definitivo:</strong> <?= rv($ef['diagnostico_definitivo']) ?><br>
+      <strong>Tipo de tratamiento:</strong> <?= $tipos ? implode(', ',$tipos) : '—' ?><br>
+      <strong>Inicio:</strong> <?= fd($ef['fecha_inicio']) ?> &nbsp;·&nbsp;
+      <strong>Finalización:</strong> <?= fd($ef['fecha_finalizacion']) ?> &nbsp;·&nbsp;
+      <strong>Irrigante:</strong> <?= rv($ef['irrigante']) ?><br>
+      <strong>Medicación:</strong> <?= $meds ? implode(', ',$meds) : '—' ?>
+      <?php if(!empty($ef['dr'])): ?> &nbsp;·&nbsp; <strong>Profesional:</strong> <?= rv($ef['dr']) ?><?php endif; ?>
+    </div>
+    <?php if (!empty($endo_odo[$ef['id']])): ?>
+    <table class="plan-table" style="margin-top:6px">
+      <thead><tr><th>Conducto</th><th>N° raíces</th><th>Referencia</th><th>Long. radiográfica</th><th>Long. trabajo</th></tr></thead>
+      <tbody>
+      <?php foreach ($endo_odo[$ef['id']] as $om): ?>
+        <tr><td><?= rv($om['conducto']) ?></td><td><?= rv($om['n_raices']) ?></td><td><?= rv($om['referencia_tope']) ?></td><td><?= rv($om['long_radiografica']) ?></td><td><?= rv($om['long_trabajo']) ?></td></tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+    <?php endif; ?>
   </div>
   <?php endforeach; ?>
 </div>

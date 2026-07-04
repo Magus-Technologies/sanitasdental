@@ -20,7 +20,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    db()->prepare("UPDATE pacientes SET $sets,updated_at=NOW() WHERE id=?")->execute([...array_values($d),$ei]);
    auditar('EDITAR_PAC','pacientes',$ei); flash('ok','Paciente actualizado.'); go("pages/pacientes.php?accion=ver&id=$ei");
   } else {
-   $cod=genCodigo('HCL','pacientes');
+   $cod=genCodigo('HCL','pacientes'); if(function_exists('sede_para_nuevo')) $d['sede_id']=sede_para_nuevo();
    $cols='codigo,'.implode(',',array_keys($d));
    $phs='?,'.implode(',',array_fill(0,count($d),'?'));
    db()->prepare("INSERT INTO pacientes($cols)VALUES($phs)")->execute([$cod,...array_values($d)]);
@@ -55,11 +55,11 @@ if($accion==='lista'){
  $q=trim($_GET['q']??''); $pg=max(1,(int)($_GET['p']??1)); $pp=20;
  $orden=(($_GET['orden']??'asc')==='desc')?'desc':'asc';
  $mostrar_inactivos=isset($_GET['inactivos']);
- $w=$mostrar_inactivos?'WHERE activo=0':'WHERE activo=1'; $pm=[];
+ $w=$mostrar_inactivos?'WHERE activo=0':'WHERE activo=1'; $pm=[]; if(function_exists('sede_filtro_sql')) $w.=sede_filtro_sql('sede_id',true);
  if($q){$w.=' AND(nombres LIKE ? OR apellido_paterno LIKE ? OR dni LIKE ? OR telefono LIKE ? OR codigo LIKE ?)';$b="%$q%";$pm=[$b,$b,$b,$b,$b];}
  $st=db()->prepare("SELECT COUNT(*) FROM pacientes $w"); $st->execute($pm); $tot=(int)$st->fetchColumn();
  $pages=max(1,ceil($tot/$pp)); $pg=min($pg,$pages); $off=($pg-1)*$pp;
- $st2=db()->prepare("SELECT * FROM pacientes $w ORDER BY CAST(REGEXP_REPLACE(codigo,'[^0-9]','') AS UNSIGNED) $orden, id $orden LIMIT $pp OFFSET $off");
+ $st2=db()->prepare("SELECT pacientes.*, (SELECT MAX(c.fecha) FROM citas c WHERE c.paciente_id=pacientes.id AND c.estado='atendido') AS ult_atencion, (SELECT MIN(CONCAT(c.fecha,' ',COALESCE(c.hora_inicio,'00:00:00'))) FROM citas c WHERE c.paciente_id=pacientes.id AND c.fecha>=CURDATE() AND c.estado NOT IN('cancelado','anulado')) AS prox_cita FROM pacientes $w ORDER BY CAST(REGEXP_REPLACE(codigo,'[^0-9]','') AS UNSIGNED) $orden, id $orden LIMIT $pp OFFSET $off");
  $st2->execute($pm); $lista=$st2->fetchAll();
  $topbar_act='<a href="?accion=nuevo" class="btn btn-primary"><i class="bi bi-person-plus me-1"></i>Nuevo paciente</a>';
  require_once __DIR__.'/../includes/header.php';
@@ -92,55 +92,98 @@ if($accion==='lista'){
  <i class="bi bi-person-dash-fill me-2"></i><strong>Mostrando pacientes desactivados.</strong> Los datos se conservan en la BD. Puedes restaurarlos.
 </div>
 <?php endif; ?>
-<div class="card">
- <div class="table-responsive"><table class="table mb-0">
-  <thead><tr><th>Código</th><th>Paciente</th><th class="d-none d-md-table-cell">DNI</th><th class="d-none d-sm-table-cell">Teléfono</th><th class="d-none d-lg-table-cell">Seguro</th><th class="d-none d-lg-table-cell">Edad</th><th></th></tr></thead>
-  <tbody>
-  <?php foreach($lista as $p): ?>
-  <tr>
-   <td class="mon" style="color:var(--c);font-size:11px"><?=e($p['codigo'])?></td>
-   <td><div class="d-flex align-items-center gap-2">
-    <?php if($p['foto_perfil']): ?>
-     <img src="<?=BASE_URL?>/uploads/<?=e($p['foto_perfil'])?>" class="rounded-circle" style="width:36px;height:36px;object-fit:cover;flex-shrink:0" alt="Foto">
-    <?php else: ?>
-     <div class="ava"><?=strtoupper(substr($p['nombres'],0,1))?></div>
-    <?php endif; ?>
-    <div><strong><?=e($p['nombres'].' '.$p['apellido_paterno'])?></strong>
-    <?php if($p['alergias']): ?><br><span class="badge br" style="font-size:9px">⚠ Alérgico</span><?php endif; ?></div>
-   </div></td>
-   <td class="mon"><?=e($p['dni']??'—')?></td>
-   <td><?=e($p['telefono']??'—')?></td>
-   <td><span class="badge bgr"><?=strtoupper($p['tipo_seguro'])?></span></td>
-   <td><?=$p['fecha_nacimiento']?edad($p['fecha_nacimiento']):'—'?></td>
-   <td><div class="d-flex gap-1">
-    <a href="?accion=ver&id=<?=$p['id']?>" class="btn btn-dk btn-ico"><i class="bi bi-eye"></i></a>
-    <a href="<?=BASE_URL?>/pages/historia_clinica.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="background:rgba(0,212,238,.14);border:1px solid rgba(0,212,238,.55);color:#22d3ee" title="HC"><i class="bi bi-file-medical-fill"></i></a>
-    <a href="<?=BASE_URL?>/pages/recetarios.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="background:rgba(236,72,153,.14);border:1px solid rgba(236,72,153,.55);color:#f472b6" title="Recetas"><i class="bi bi-prescription2"></i></a>
-    <a href="<?=BASE_URL?>/pages/ortodoncias.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="background:rgba(6,182,212,.14);border:1px solid rgba(6,182,212,.55);color:#22d3ee" title="Ortodoncia"><i class="bi bi-grid-3x2-gap"></i></a>
-    <a href="<?=BASE_URL?>/pages/destartraje.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="background:rgba(16,185,129,.14);border:1px solid rgba(16,185,129,.55);color:#34d399" title="Destartraje"><i class="bi bi-droplet-fill"></i></a>
-    <a href="<?=BASE_URL?>/pages/curaciones.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.55);color:#fbbf24" title="Curaciones"><i class="bi bi-bandaid-fill"></i></a>
-    <a href="<?=BASE_URL?>/pages/protesis_fija.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="background:rgba(139,92,246,.14);border:1px solid rgba(139,92,246,.55);color:#a78bfa" title="Prótesis Fija"><i class="bi bi-gem"></i></a>
-    <a href="<?=BASE_URL?>/pages/endodoncia.php?paciente_id=<?=$p['id']?>" class="btn btn-ico" style="background:rgba(239,68,68,.16);border:1px solid rgba(239,68,68,.6);color:#f87171" title="Ficha Endodóntica"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6c-1 0-1.5.45-2.6.45S3.55 1.6 2.7 2.1C1.45 2.85 1.05 4.3 1.05 5.75c0 1.5.45 2.75.9 4.2.3 1 .4 2.05.65 3.05.2.78.42 1.65 1.12 1.85.78.22 1.05-.85 1.18-1.55.2-.95.28-2 .58-2.85.1-.35.28-.75.85-.75s.75.4.85.75c.3.85.38 1.9.58 2.85.13.7.4 1.77 1.18 1.55.7-.2.92-1.07 1.12-1.85.25-1 .35-2.05.65-3.05.45-1.45.9-2.7.9-4.2 0-1.45-.4-2.9-1.65-3.65C12.6 1.6 11.7 2.05 10.6 2.05S9 1.6 8 1.6z"/></svg></a>
-    <a href="<?=BASE_URL?>/pages/citas.php?accion=nueva&paciente_id=<?=$p['id']?>" class="btn btn-ico btn-ok" title="Agendar"><i class="bi bi-calendar-plus"></i></a>
+<style>
+.pac-list{display:flex;flex-direction:column;gap:8px}
+.pac-item{background:var(--bg2);border:1px solid var(--bd2);border-radius:12px;overflow:hidden;transition:border-color .15s}
+.pac-item.open{border-color:var(--c)}
+.pac-head{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer}
+.pac-head:hover{background:var(--bg3)}
+.pac-ava{width:40px;height:40px;border-radius:50%;object-fit:cover;flex:none}
+.pac-ini{width:40px;height:40px;border-radius:50%;background:rgba(6,182,212,.14);color:var(--c);display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}
+.pac-name{font-weight:700;color:var(--t)}
+.pac-meta{color:var(--t2);font-size:12px;margin-top:2px}
+.pac-right{margin-left:auto;color:var(--t2);font-size:12px;white-space:nowrap;text-align:right}
+.pac-chev{color:var(--t2);font-size:18px;transition:transform .2s;flex:none}
+.pac-item.open .pac-chev{transform:rotate(180deg)}
+.pac-body{display:none;border-top:1px solid var(--bd2);padding:14px}
+.pac-item.open .pac-body{display:block}
+.pac-info{display:flex;flex-wrap:wrap;gap:8px}
+.pac-chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--bd2);border-radius:20px;padding:6px 12px;font-size:12.5px;color:var(--t)}
+.pac-info i{color:var(--c)}
+.pac-cita{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--t2)}
+.qa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:8px;margin-top:12px}
+.qa{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;border:1px solid var(--bd2);border-radius:10px;padding:10px 4px;color:var(--t);text-decoration:none;font-size:11px;transition:.15s}
+.qa:hover{border-color:var(--c);filter:brightness(1.03)}
+.qa i{font-size:20px}
+.qa-lbl{line-height:1.15}
+</style>
+<div class="pac-list">
+<?php foreach($lista as $p): ?>
+ <div class="pac-item">
+  <div class="pac-head" onclick="pacToggle(this)">
+   <?php if($p['foto_perfil']): ?>
+    <img class="pac-ava" src="<?=BASE_URL?>/uploads/<?=e($p['foto_perfil'])?>" alt="">
+   <?php else: ?>
+    <div class="pac-ini"><?=strtoupper(substr($p['nombres'],0,1))?></div>
+   <?php endif; ?>
+   <div style="min-width:0">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+     <span class="pac-name"><?=e($p['nombres'].' '.$p['apellido_paterno'])?></span>
+     <?php if($p['alergias']): ?><span class="badge br" style="font-size:9px"><i class="bi bi-exclamation-triangle-fill me-1"></i>Alérgico</span><?php endif; ?>
+    </div>
+    <div class="pac-meta"><span class="mon" style="color:var(--c)"><?=e($p['codigo'])?></span> · DNI <?=e($p['dni']?:'—')?> · <?=strtoupper($p['tipo_seguro']?:'—')?> · <?=edad($p['fecha_nacimiento'])?></div>
+   </div>
+   <div class="pac-right d-none d-md-block"><?=$p['ult_atencion']?'Última: '.date('d/m/Y',strtotime($p['ult_atencion'])):'Sin atenciones'?></div>
+   <i class="bi bi-chevron-down pac-chev"></i>
+  </div>
+  <div class="pac-body">
+   <div class="pac-info">
+    <span class="pac-chip"><i class="bi bi-fingerprint"></i>DNI <?=e($p['dni']?:'—')?></span>
+    <span class="pac-chip"><i class="bi bi-telephone-fill"></i><?=e($p['telefono']?:'—')?></span>
+    <span class="pac-chip"><i class="bi bi-envelope-fill"></i><?=e($p['email']?:'—')?></span>
+    <span class="pac-chip"><i class="bi bi-shield-fill"></i><?=strtoupper($p['tipo_seguro']?:'—')?><?=$p['num_seguro']?' · '.e($p['num_seguro']):''?></span>
+    <span class="pac-chip"><i class="bi bi-person-badge"></i><?=edad($p['fecha_nacimiento'])?><?=$p['sexo']?' · '.e($p['sexo']):''?></span>
+    <?php if($p['direccion']): ?><span class="pac-chip"><i class="bi bi-geo-alt-fill"></i><?=e($p['direccion'])?><?=$p['distrito']?', '.e($p['distrito']):''?></span><?php endif; ?>
+   </div>
+   <div class="pac-cita">
+    <span><i class="bi bi-clock-history me-1" style="color:var(--c)"></i><?=$p['ult_atencion']?'Última atención: '.date('d/m/Y',strtotime($p['ult_atencion'])):'Sin atenciones previas'?></span>
+    <?php if($p['prox_cita']): ?><span style="color:var(--c)"><i class="bi bi-calendar-event me-1"></i>Próxima cita: <?=date('d/m/Y · g:i a',strtotime($p['prox_cita']))?></span><?php endif; ?>
+   </div>
+   <div class="qa-grid">
+    <a class="qa" style="background:rgba(6,182,212,.08)" href="<?=BASE_URL?>/pages/historia_clinica.php?paciente_id=<?=$p['id']?>"><i class="bi bi-file-medical-fill" style="color:#06B6D4"></i><span class="qa-lbl">Historia clínica</span></a>
+    <a class="qa" style="background:rgba(59,130,246,.08)" href="<?=BASE_URL?>/pages/odontograma.php?paciente_id=<?=$p['id']?>"><i class="bi bi-grid-3x3-gap-fill" style="color:#3B82F6"></i><span class="qa-lbl">Odontograma</span></a>
+    <a class="qa" style="background:rgba(16,185,129,.08)" href="<?=BASE_URL?>/pages/citas.php?accion=nueva&paciente_id=<?=$p['id']?>"><i class="bi bi-calendar-plus" style="color:#10B981"></i><span class="qa-lbl">Agendar cita</span></a>
+    <a class="qa" style="background:rgba(99,102,241,.08)" href="<?=BASE_URL?>/pages/presupuestos.php?paciente_id=<?=$p['id']?>"><i class="bi bi-clipboard2-pulse-fill" style="color:#6366F1"></i><span class="qa-lbl">Planes</span></a>
+    <a class="qa" style="background:rgba(236,72,153,.08)" href="<?=BASE_URL?>/pages/recetarios.php?paciente_id=<?=$p['id']?>"><i class="bi bi-prescription2" style="color:#EC4899"></i><span class="qa-lbl">Recetas</span></a>
+    <a class="qa" style="background:rgba(20,184,166,.08)" href="<?=BASE_URL?>/pages/ortodoncias.php?paciente_id=<?=$p['id']?>"><i class="bi bi-bezier2" style="color:#14B8A6"></i><span class="qa-lbl">Ortodoncia</span></a>
+    <a class="qa" style="background:rgba(239,68,68,.08)" href="<?=BASE_URL?>/pages/endodoncia.php?paciente_id=<?=$p['id']?>"><i class="bi bi-diagram-3-fill" style="color:#EF4444"></i><span class="qa-lbl">Endodoncia</span></a>
+    <a class="qa" style="background:rgba(14,165,233,.08)" href="<?=BASE_URL?>/pages/destartraje.php?paciente_id=<?=$p['id']?>"><i class="bi bi-droplet-fill" style="color:#0EA5E9"></i><span class="qa-lbl">Destartraje</span></a>
+    <a class="qa" style="background:rgba(245,158,11,.08)" href="<?=BASE_URL?>/pages/curaciones.php?paciente_id=<?=$p['id']?>"><i class="bi bi-bandaid-fill" style="color:#F59E0B"></i><span class="qa-lbl">Curaciones</span></a>
+    <a class="qa" style="background:rgba(139,92,246,.08)" href="<?=BASE_URL?>/pages/protesis_fija.php?paciente_id=<?=$p['id']?>"><i class="bi bi-gem" style="color:#8B5CF6"></i><span class="qa-lbl">Prótesis</span></a>
+    <a class="qa" style="background:rgba(249,115,22,.08)" href="<?=BASE_URL?>/pages/facturacion.php?paciente_id=<?=$p['id']?>"><i class="bi bi-receipt" style="color:#F97316"></i><span class="qa-lbl">Facturación</span></a>
+    <a class="qa" style="background:rgba(100,116,139,.08)" href="?accion=ver&id=<?=$p['id']?>"><i class="bi bi-person-vcard-fill" style="color:#64748B"></i><span class="qa-lbl">Ficha completa</span></a>
+   </div>
+   <div class="d-flex gap-2 mt-3 justify-content-end">
+    <a href="?accion=editar&id=<?=$p['id']?>" class="btn btn-dk btn-sm"><i class="bi bi-pencil me-1"></i>Editar</a>
     <?php if(!$mostrar_inactivos): ?>
-    <form method="POST" class="d-inline" onsubmit="return confirm('\u00bfDesactivar paciente? Los datos se conservan en la BD.')">
+    <form method="POST" class="d-inline" onsubmit="return confirm('¿Desactivar paciente? Los datos se conservan en la BD.')">
      <input type="hidden" name="accion" value="desactivar"><input type="hidden" name="id" value="<?=$p['id']?>">
-     <button type="submit" class="btn btn-del btn-ico" title="Desactivar"><i class="bi bi-person-dash-fill"></i></button>
+     <button type="submit" class="btn btn-del btn-sm"><i class="bi bi-person-dash-fill me-1"></i>Desactivar</button>
     </form>
     <?php else: ?>
     <form method="POST" class="d-inline">
      <input type="hidden" name="accion" value="restaurar"><input type="hidden" name="id" value="<?=$p['id']?>">
-     <button type="submit" class="btn btn-ok btn-ico" title="Restaurar paciente"><i class="bi bi-person-check-fill"></i></button>
+     <button type="submit" class="btn btn-ok btn-sm"><i class="bi bi-person-check-fill me-1"></i>Restaurar</button>
     </form>
     <?php endif; ?>
-   </div></td>
-  </tr>
-  <?php endforeach; if(!$lista): ?>
-  <tr><td colspan="8" class="text-center py-4" style="color:var(--t2)"><i class="bi bi-people" style="font-size:36px;display:block;margin-bottom:8px"></i>No se encontraron pacientes</td></tr>
-  <?php endif; ?>
-  </tbody>
- </table></div>
+   </div>
+  </div>
+ </div>
+<?php endforeach; if(!$lista): ?>
+ <div class="card text-center py-4" style="color:var(--t2)"><i class="bi bi-people" style="font-size:36px;display:block;margin-bottom:8px"></i>No se encontraron pacientes</div>
+<?php endif; ?>
 </div>
+<script>function pacToggle(h){h.parentElement.classList.toggle('open');}</script>
 <?php if($pages>1): ?>
 <nav class="mt-3 d-flex justify-content-end"><ul class="pagination pagination-sm">
  <?php for($i=1;$i<=$pages;$i++): ?>
