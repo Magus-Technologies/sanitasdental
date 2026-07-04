@@ -1,10 +1,10 @@
 <?php
 /**
  * Proxy a APIs Perú (RENIEC/SUNAT) para consultar DNI o RUC.
- * Se llama desde el frontend con: includes/api_documento.php?doc=XXXXXXXX
+ * Se llama desde el frontend con: api/documento.php?doc=XXXXXXXX
  * Mantiene el token en el servidor para no exponerlo al cliente.
  */
-require_once __DIR__.'/config.php';
+require_once __DIR__.'/../includes/config.php';
 requiereLogin();
 header('Content-Type: application/json; charset=utf-8');
 

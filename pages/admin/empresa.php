@@ -363,7 +363,7 @@ require_once __DIR__.'/../../includes/header.php';
 
 <script>
 (function () {
- const API = '<?=BASE_URL?>/includes/api_documento.php';
+ const API = '<?=BASE_URL?>/api/documento.php';
 
  // Sincroniza el preview del color con el input text
  const colorInp = document.querySelector('input[name="color_primario"]');

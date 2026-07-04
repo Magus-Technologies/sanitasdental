@@ -663,7 +663,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
         setMsg('Consultando RENIEC...', true);
         try {
-            const r = await fetch('BASEURL/includes/api_documento.php?doc=' + doc, { credentials:'same-origin' });
+            const r = await fetch('BASEURL/api/documento.php?doc=' + doc, { credentials:'same-origin' });
             const txt = await r.text();
             let j; try { j = JSON.parse(txt); } catch(e){ setMsg('Respuesta inesperada (HTTP '+r.status+').', false); return; }
             if (!r.ok || !j.ok || j.tipo !== 'dni') { setMsg(j.msg || 'No encontrado.', false); return; }

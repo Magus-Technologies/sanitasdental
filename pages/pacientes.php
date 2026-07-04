@@ -870,7 +870,7 @@ if($accion==='lista'){
 </div></div>
 <script>
 (function(){
- const API = '<?=BASE_URL?>/includes/api_documento.php';
+ const API = '<?=BASE_URL?>/api/documento.php';
  const $   = (id) => document.getElementById(id);
  const setMsg = (txt, ok) => {
   const el = $('docMsg');

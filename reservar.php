@@ -107,7 +107,7 @@ if ($ajax) {
         if ($_SESSION['reniec_hits'] > 12) { echo json_encode(['ok'=>false,'msg'=>'Límite de consultas alcanzado.']); exit; }
         $doc = preg_replace('/\\D/','', $_GET['doc'] ?? '');
         if (strlen($doc) !== 8) { echo json_encode(['ok'=>false,'msg'=>'DNI inválido']); exit; }
-        // Token/URL espejo de includes/api_documento.php (APISPERU RENIEC) — se mantiene en el servidor.
+        // Token/URL espejo de api/documento.php (APISPERU RENIEC) — se mantiene en el servidor.
         $url = 'https://dniruc.apisperu.com/api/v1/dni/'.$doc.'?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6InN5c3RlbWNyYWZ0LnBlQGdtYWlsLmNvbSJ9.yuNS5hRaC0hCwymX_PjXRoSZJWLNNBeOdlLRSUGlHGA';
         $out = ['ok'=>false];
         try {
